@@ -33,7 +33,7 @@ $Body = @{
 
 try {
   $Timer = [Diagnostics.Stopwatch]::StartNew()
-  $Result = Invoke-RestMethod -Method POST -Uri "http://127.0.0.1:3000/points/award" -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 8) -TimeoutSec 15
+  $Result = Invoke-RestMethod -Method POST -Uri "http://127.0.0.1:4000/points/award" -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 8) -TimeoutSec 15
   $Timer.Stop()
   Write-Output "POST /points/award OK $([math]::Round($Timer.Elapsed.TotalMilliseconds))ms newBalance=$($Result.result.newBalance)"
 } catch {

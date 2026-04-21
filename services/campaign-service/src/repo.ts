@@ -1,6 +1,10 @@
 import { supabase } from "./supabase-client.js";
 import { config } from "./config.js";
-const useMemory = config.useLocalFallback || !config.supabaseUrl || config.supabaseUrl.startsWith("http://localhost");
+const useMemory =
+  config.useLocalFallback ||
+  !config.supabaseUrl ||
+  config.supabaseUrl.startsWith("http://127.0.0.1") ||
+  config.supabaseUrl.startsWith("http://localhost");
 const memory = {
   campaigns: [
     {

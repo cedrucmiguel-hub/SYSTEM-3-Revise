@@ -3,7 +3,7 @@ const BASE_URL =
   process.env.NEXT_PUBLIC_GATEWAY_URL ||
   process.env.POINTS_ENGINE_URL ||
   process.env.NEXT_PUBLIC_POINTS_ENGINE_URL ||
-  "http://localhost:4001";
+  "http://127.0.0.1:4001";
 const configuredTimeout = Number(process.env.POINTS_SERVICE_TIMEOUT_MS || 900);
 const DEFAULT_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 900;
 

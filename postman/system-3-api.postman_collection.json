@@ -13,7 +13,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/api/health"
+            "url": "{{baseUrl}}/health"
           }
         }
       ]
@@ -462,7 +462,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"partnerId\": \"{{partnerId}}\",\n  \"partnerCode\": \"P001\",\n  \"partnerName\": \"Postman Partner\",\n  \"memberId\": \"{{memberId}}\",\n  \"memberEmail\": \"{{memberEmail}}\",\n  \"orderId\": \"ORDER-POSTMAN-001\",\n  \"points\": 250,\n  \"grossAmount\": 1500,\n  \"note\": \"Partner earn/burn transaction test\"\n}",
+              "raw": "{\n  \"partnerId\": \"{{partnerId}}\",\n  \"partnerCode\": \"P001\",\n  \"partnerName\": \"Postman Partner\",\n  \"memberId\": \"{{memberId}}\",\n  \"memberEmail\": \"{{memberEmail}}\",\n  \"orderId\": \"{{partnerOrderId}}\",\n  \"points\": 250,\n  \"grossAmount\": 1500,\n  \"note\": \"Partner earn/burn transaction test\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -470,7 +470,18 @@
               }
             },
             "url": "{{baseUrl}}/partners/transactions"
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"partnerOrderId\", `ORDER-${Date.now()}`);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Get Partner Dashboard",

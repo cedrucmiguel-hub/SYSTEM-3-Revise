@@ -7,6 +7,23 @@ $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $Runtime = Join-Path $Root ".runtime"
 New-Item -ItemType Directory -Force -Path $Runtime | Out-Null
 
+$RequiredPaths = @(
+  (Join-Path $Root "node_modules\next"),
+  (Join-Path $Root "services\points-engine\dist\server.js"),
+  (Join-Path $Root "services\campaign-service\dist\server.js"),
+  (Join-Path $Root "services\gateway\dist\server.js")
+)
+
+$Missing = $RequiredPaths | Where-Object { -not (Test-Path $_) }
+if ($Missing.Count -gt 0) {
+  Write-Output "Local stack is not built yet. Run this first:"
+  Write-Output "npm run setup:local"
+  Write-Output ""
+  Write-Output "Missing:"
+  $Missing | ForEach-Object { Write-Output " - $_" }
+  exit 1
+}
+
 $Ports = @(3000, 4000, 4001, 4002)
 
 if ($StopExisting) {

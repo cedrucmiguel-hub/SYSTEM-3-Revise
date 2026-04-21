@@ -6,7 +6,7 @@ export const options = {
   duration: "30s",
 };
 
-const BASE = __ENV.GATEWAY_URL || "http://localhost:4000";
+const BASE = __ENV.GATEWAY_URL || "http://127.0.0.1:4000";
 
 export default function () {
   const res = http.get(`${BASE}/health`);

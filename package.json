@@ -6,6 +6,9 @@
     "scripts": {
         "build": "next build",
         "dev": "node scripts/next-dev-inproc.cjs",
+        "setup:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/setup-local-stack.ps1",
+        "local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/start-local-stack.ps1 -StopExisting",
+        "qa": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/test-local-stack.ps1",
         "preserver": "next build",
         "prestart": "next build",
         "server": "next start --hostname 0.0.0.0 --port 3000",
