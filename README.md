@@ -22,6 +22,8 @@ http://127.0.0.1:3000/admin/settings
 
 Use `127.0.0.1`, not `localhost`, for local QA and Postman. If Chrome shows `chrome-error://chromewebdata`, the local server is not running yet. Run `npm run local` again and verify ports `3000`, `4000`, `4001`, and `4002` are listening.
 
+If you run `npm run build` while the local stack is already open, run `npm run local` again before testing. Next.js rewrites `.next` during production builds, so restarting avoids mixed dev/build artifacts.
+
 Postman local gateway base URL:
 
 ```text

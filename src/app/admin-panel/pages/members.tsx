@@ -245,7 +245,7 @@ export default function AdminMembersPage() {
   const visibleMembers = useMemo(() => filtered.slice(0, visibleMemberCount), [filtered, visibleMemberCount]);
 
   const stats = useMemo(
-    () => buildSegmentStats(segmentedMembers.length, segmentedMembers.flatMap((m) => (m.customSegments.length ? m.allSegments : [m.segment]))),
+    () => buildSegmentStats(segmentedMembers.length, segmentedMembers.map((m) => m.segment)),
     [segmentedMembers]
   );
   const segmentAnalytics = useMemo(() => {
@@ -262,7 +262,7 @@ export default function AdminMembersPage() {
     const totals = new Map<string, { count: number; spend: number; active: number }>();
     for (const member of segmentedMembers) {
       const memberKey = String(member.member_id ?? member.id ?? "");
-      const segmentNames = member.customSegments.length ? member.allSegments : [member.segment];
+      const segmentNames = [member.segment];
       const lastActivity = member.last_activity_at ? new Date(member.last_activity_at).getTime() : NaN;
       const isActive = Number.isFinite(lastActivity) && now - lastActivity <= recentWindowMs;
 

@@ -15,6 +15,21 @@ function generatedSegmentId(name: string) {
   return `SEG-${slug || "segment"}-${Date.now()}`;
 }
 
+function cleanLocalSegmentName(name: string) {
+  const trimmed = String(name || "").trim().replace(/\s+/g, " ");
+  const withoutToolPrefix = trimmed
+    .replace(/^(postman|qa|gateway)\s+/i, "")
+    .replace(/\s+local$/i, "")
+    .trim();
+
+  if (/high\s+value/i.test(withoutToolPrefix)) return "High Value";
+  if (/^active$/i.test(withoutToolPrefix)) return "Active";
+  if (/^at\s+risk$/i.test(withoutToolPrefix)) return "At Risk";
+  if (/^inactive$/i.test(withoutToolPrefix)) return "Inactive";
+
+  return withoutToolPrefix || "Segment";
+}
+
 export async function saveLocalSegment(input: {
   id?: string;
   name: string;
@@ -24,16 +39,17 @@ export async function saveLocalSegment(input: {
   memberIds?: string[];
 }) {
   return updateApiState((state) => {
-    const normalizedName = input.name.trim().toLowerCase();
+    const cleanName = cleanLocalSegmentName(input.name);
+    const normalizedName = cleanName.toLowerCase();
     const existingByName = Object.values(state.segments).find(
-      (segment) => segment.name.trim().toLowerCase() === normalizedName,
+      (segment) => cleanLocalSegmentName(segment.name).toLowerCase() === normalizedName,
     );
-    const id = input.id && !hasUnresolvedVariable(input.id) ? input.id : existingByName?.id || generatedSegmentId(input.name);
+    const id = input.id && !hasUnresolvedVariable(input.id) ? input.id : existingByName?.id || generatedSegmentId(cleanName);
     const existing = state.segments[id];
     const now = new Date().toISOString();
     const segment: LocalSegmentRecord = {
       id,
-      name: input.name.trim(),
+      name: cleanName,
       description: input.description?.trim() || null,
       is_system: false,
       created_at: existing?.created_at || now,
@@ -48,9 +64,24 @@ export async function saveLocalSegment(input: {
 }
 
 export async function listLocalSegments() {
-  return updateApiState((state) =>
-    Object.values(state.segments)
-      .filter((segment) => !hasUnresolvedVariable(segment.id))
-      .sort((left, right) => left.name.localeCompare(right.name)),
-  );
+  return updateApiState((state) => {
+    const byName = new Map<string, LocalSegmentRecord>();
+    for (const segment of Object.values(state.segments)) {
+      if (hasUnresolvedVariable(segment.id)) continue;
+      const name = cleanLocalSegmentName(segment.name);
+      const key = name.toLowerCase();
+      const existing = byName.get(key);
+      const normalized = { ...segment, name };
+      if (!existing) {
+        byName.set(key, normalized);
+        continue;
+      }
+      byName.set(key, {
+        ...existing,
+        updated_at: existing.updated_at > normalized.updated_at ? existing.updated_at : normalized.updated_at,
+        memberIds: Array.from(new Set([...(existing.memberIds || []), ...(normalized.memberIds || [])])),
+      });
+    }
+    return Array.from(byName.values()).sort((left, right) => left.name.localeCompare(right.name));
+  });
 }

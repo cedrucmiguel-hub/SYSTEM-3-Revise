@@ -15,7 +15,7 @@ const resolvedString = (max: number) =>
     .min(1)
     .max(max)
     .refine((value) => !value.includes("{{") && !value.includes("}}"), {
-      message: "Postman variable is unresolved. Use a real value or a valid environment variable name.",
+      message: "Request variable is unresolved. Use a real value or a valid environment variable name.",
     });
 const trimmedString = resolvedString(160);
 const optionalTrimmedString = (max: number) =>
@@ -24,7 +24,7 @@ const optionalTrimmedString = (max: number) =>
     .trim()
     .max(max)
     .refine((value) => !value.includes("{{") && !value.includes("}}"), {
-      message: "Postman variable is unresolved. Use a real value or a valid environment variable name.",
+      message: "Request variable is unresolved. Use a real value or a valid environment variable name.",
     })
     .optional();
 

@@ -234,7 +234,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"{{campaignId}}\",\n  \"campaignCode\": \"{{campaignCode}}\",\n  \"campaignName\": \"Postman Bonus Campaign\",\n  \"description\": \"Campaign created from Postman.\",\n  \"campaignType\": \"bonus_points\",\n  \"status\": \"draft\",\n  \"multiplier\": 1,\n  \"minimumPurchaseAmount\": 300,\n  \"bonusPoints\": 100,\n  \"productScope\": [\"Beverage\"],\n  \"eligibleTiers\": [\"Bronze\", \"Silver\", \"Gold\"],\n  \"startsAt\": \"2026-04-20T00:00:00.000Z\",\n  \"endsAt\": \"2026-12-31T23:59:59.000Z\",\n  \"budgetLimit\": 10000,\n  \"pushNotificationEnabled\": true\n}",
+              "raw": "{\n  \"id\": \"{{campaignId}}\",\n  \"campaignCode\": \"{{campaignCode}}\",\n  \"campaignName\": \"Bonus Points Campaign\",\n  \"description\": \"Campaign created for local API testing.\",\n  \"campaignType\": \"bonus_points\",\n  \"status\": \"draft\",\n  \"multiplier\": 1,\n  \"minimumPurchaseAmount\": 300,\n  \"bonusPoints\": 100,\n  \"productScope\": [\"Beverage\"],\n  \"eligibleTiers\": [\"Bronze\", \"Silver\", \"Gold\"],\n  \"startsAt\": \"2026-04-20T00:00:00.000Z\",\n  \"endsAt\": \"2026-12-31T23:59:59.000Z\",\n  \"budgetLimit\": 10000,\n  \"pushNotificationEnabled\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -251,7 +251,7 @@
                 "exec": [
                   "const stamp = Date.now();",
                   "pm.environment.set(\"campaignId\", `CAMP-${stamp}`);",
-                  "pm.environment.set(\"campaignCode\", `POSTMAN-CAMP-${stamp}`);"
+                  "pm.environment.set(\"campaignCode\", `LOCAL-CAMP-${stamp}`);"
                 ]
               }
             },
@@ -334,7 +334,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Postman High Value\",\n  \"description\": \"Postman-created segment.\",\n  \"logicMode\": \"AND\",\n  \"conditions\": [\n    {\n      \"id\": \"cond-tier\",\n      \"field\": \"Tier\",\n      \"operator\": \"is\",\n      \"value\": \"Gold\"\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"High Value\",\n  \"description\": \"Gold tier member segment.\",\n  \"logicMode\": \"AND\",\n  \"conditions\": [\n    {\n      \"id\": \"cond-tier\",\n      \"field\": \"Tier\",\n      \"operator\": \"is\",\n      \"value\": \"Gold\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -383,7 +383,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"memberId\": \"{{memberId}}\",\n  \"email\": \"{{memberEmail}}\",\n  \"subject\": \"Postman Email Test\",\n  \"message\": \"This is a scheduled email communication test.\"\n}",
+              "raw": "{\n  \"memberId\": \"{{memberId}}\",\n  \"email\": \"{{memberEmail}}\",\n  \"subject\": \"Scheduled Email Test\",\n  \"message\": \"This is a scheduled email communication test.\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -405,7 +405,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"memberId\": \"{{memberId}}\",\n  \"email\": \"{{memberEmail}}\",\n  \"subject\": \"Postman SMS Test\",\n  \"message\": \"Your points update is ready.\",\n  \"trigger\": \"points_awarded\"\n}",
+              "raw": "{\n  \"memberId\": \"{{memberId}}\",\n  \"email\": \"{{memberEmail}}\",\n  \"subject\": \"Points Update\",\n  \"message\": \"Your points update is ready.\",\n  \"trigger\": \"points_awarded\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -462,7 +462,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"partnerId\": \"{{partnerId}}\",\n  \"partnerCode\": \"P001\",\n  \"partnerName\": \"Postman Partner\",\n  \"memberId\": \"{{memberId}}\",\n  \"memberEmail\": \"{{memberEmail}}\",\n  \"orderId\": \"{{partnerOrderId}}\",\n  \"points\": 250,\n  \"grossAmount\": 1500,\n  \"note\": \"Partner earn/burn transaction test\"\n}",
+              "raw": "{\n  \"partnerId\": \"{{partnerId}}\",\n  \"partnerCode\": \"P001\",\n  \"partnerName\": \"Local Rewards Partner\",\n  \"memberId\": \"{{memberId}}\",\n  \"memberEmail\": \"{{memberEmail}}\",\n  \"orderId\": \"{{partnerOrderId}}\",\n  \"points\": 250,\n  \"grossAmount\": 1500,\n  \"note\": \"Partner earn/burn transaction test\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

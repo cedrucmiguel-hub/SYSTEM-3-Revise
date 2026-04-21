@@ -58,7 +58,7 @@ async function resolveCampaignId(rawId: unknown) {
   if (campaignId && !hasUnresolvedVariable(campaignId)) return campaignId;
   const latest = await getLatestLocalCampaign();
   if (latest?.id) return latest.id;
-  throw new HttpError(400, "Campaign ID is required. Create a campaign first or set campaignId in Postman.");
+  throw new HttpError(400, "Campaign ID is required. Create a campaign first or set campaignId in your request environment.");
 }
 
 export const campaignSchema = z
@@ -174,6 +174,26 @@ function buildBudgetStatus(campaign: PromotionCampaign, performance?: any) {
   };
 }
 
+function buildLocalPerformanceRows(campaigns: any[]) {
+  return campaigns.map((campaign) => ({
+    campaign_id: String(campaign.id),
+    campaign_code: String(campaign.campaignCode ?? campaign.campaign_code ?? ""),
+    campaign_name: String(campaign.campaignName ?? campaign.campaign_name ?? "Campaign"),
+    campaign_type: String(campaign.campaignType ?? campaign.campaign_type ?? "bonus_points"),
+    status: String(campaign.status ?? "draft"),
+    starts_at: String(campaign.startsAt ?? campaign.starts_at ?? campaign.createdAt ?? new Date().toISOString()),
+    ends_at: String(campaign.endsAt ?? campaign.ends_at ?? new Date().toISOString()),
+    notifications_sent: Number(campaign.notificationsSent ?? campaign.notifications_sent ?? 0),
+    tracked_transactions: Number(campaign.trackedTransactions ?? campaign.tracked_transactions ?? 0),
+    points_awarded: Number(campaign.budgetSpent ?? campaign.budget_spent ?? 0),
+    redemption_count: Number(campaign.redemptionCount ?? campaign.redemption_count ?? 0),
+    quantity_limit: campaign.flashSaleQuantityLimit ?? campaign.flash_sale_quantity_limit ?? null,
+    quantity_claimed: Number(campaign.flashSaleClaimedCount ?? campaign.flash_sale_claimed_count ?? 0),
+    sell_through: null,
+    redemption_speed_per_hour: 0,
+  }));
+}
+
 export const campaignsHandler = createApiHandler({
   route: "/api/campaigns",
   methods: ["POST"] as const,
@@ -198,6 +218,45 @@ export const campaignsHandler = createApiHandler({
     }));
     if (!response.ok) throw new HttpError(502, "Campaign service save failed");
     return { ok: true as const, campaign: response.campaign, campaignId: response.campaign.id };
+  },
+});
+
+export const campaignsListHandler = createApiHandler({
+  route: "/api/campaigns",
+  methods: ["GET"] as const,
+  rateLimit: { limit: 60, windowMs: 60_000 },
+  handler: async () => {
+    if (useLocalRuntimeFirst()) {
+      return { ok: true as const, campaigns: await listLocalCampaigns(), source: "local_runtime" };
+    }
+
+    const response = await listCampaigns().catch(async () => ({
+      ok: true,
+      campaigns: await listLocalCampaigns(),
+      source: "local_fallback",
+    }));
+    if (!response.ok) throw new HttpError(502, "Campaign service list failed");
+    return { ok: true as const, campaigns: response.campaigns || [], source: (response as any).source ?? "service" };
+  },
+});
+
+export const campaignPerformanceHandler = createApiHandler({
+  route: "/api/campaigns/performance",
+  methods: ["GET"] as const,
+  rateLimit: { limit: 60, windowMs: 60_000 },
+  handler: async () => {
+    if (useLocalRuntimeFirst()) {
+      const campaigns = await listLocalCampaigns();
+      return { ok: true as const, performance: buildLocalPerformanceRows(campaigns), source: "local_runtime" };
+    }
+
+    const response = await loadCampaignPerformance().catch(async () => ({
+      ok: true,
+      performance: buildLocalPerformanceRows(await listLocalCampaigns()),
+      source: "local_fallback",
+    }));
+    if (!response.ok) throw new HttpError(502, "Campaign service performance failed");
+    return { ok: true as const, performance: response.performance || [], source: (response as any).source ?? "service" };
   },
 });
 

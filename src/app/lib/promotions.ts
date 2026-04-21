@@ -196,6 +196,15 @@ async function lookupMemberId(_memberIdentifier?: string, _fallbackEmail?: strin
   return null;
 }
 
+function useLocalPromotionFallback() {
+  return (
+    process.env.NEXT_PUBLIC_USE_REMOTE_LOYALTY_API !== "true" &&
+    (process.env.NEXT_PUBLIC_ENABLE_DEMO_AUTH === "true" ||
+      process.env.NEXT_PUBLIC_USE_LOCAL_LOYALTY_API === "true" ||
+      process.env.USE_LOCAL_LOYALTY_API === "true")
+  );
+}
+
 export async function loadPromotionCampaigns(): Promise<PromotionCampaign[]> {
   const response = await serviceListCampaigns();
   if (!response.ok) throw new Error("Campaign service list failed");
@@ -251,6 +260,8 @@ export async function loadCampaignPerformance(): Promise<CampaignPerformance[]> 
 }
 
 export async function loadRewardPartners(): Promise<RewardPartner[]> {
+  if (useLocalPromotionFallback()) return [];
+
   const { data, error } = await supabase
     .from("reward_partners")
     .select("*")
@@ -292,6 +303,8 @@ export async function toggleRewardPartner(partnerId: string, isActive: boolean) 
 }
 
 export async function loadPartnerPerformance(): Promise<RewardPartnerPerformance[]> {
+  if (useLocalPromotionFallback()) return [];
+
   const { data, error } = await supabase.rpc("loyalty_partner_reward_performance");
   if (error) throw error;
 
@@ -311,6 +324,8 @@ export async function loadPartnerPerformance(): Promise<RewardPartnerPerformance
 }
 
 export async function loadMemberBadgeProgress(memberIdentifier?: string, fallbackEmail?: string) {
+  if (useLocalPromotionFallback()) return [] as MemberBadgeProgress[];
+
   const memberId = await lookupMemberId(memberIdentifier, fallbackEmail);
   if (!memberId) return [] as MemberBadgeProgress[];
 
@@ -335,6 +350,8 @@ export async function loadMemberBadgeProgress(memberIdentifier?: string, fallbac
 }
 
 export async function loadBadgeLeaderboard(limit = 10) {
+  if (useLocalPromotionFallback()) return [] as BadgeLeaderboardEntry[];
+
   const { data, error } = await supabase.rpc("loyalty_badge_leaderboard", { p_limit: limit });
   if (error) throw error;
 

@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   referrals: "centralperk-referrals-v1",
   birthdayClaims: "centralperk-birthday-claims-v1",
   birthdaySettings: "centralperk-birthday-settings-v1",
+  feedback: "centralperk-feedback-v1",
 } as const;
 
 export type MemberSegment = "High Value" | "Active" | "At Risk" | "Inactive";
@@ -726,6 +727,23 @@ export async function loadBirthdayRewardStatus(memberId: string, fallbackEmail?:
 
 const feedbackCategories = new Set<FeedbackRecord["category"]>(["points", "rewards", "service", "app"]);
 
+function loadLocalFeedbackRecords(): FeedbackRecord[] {
+  const win = safeWindow();
+  if (!win) return [];
+  try {
+    const parsed = JSON.parse(win.localStorage.getItem(STORAGE_KEYS.feedback) || "[]") as FeedbackRecord[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalFeedbackRecords(records: FeedbackRecord[]) {
+  const win = safeWindow();
+  if (!win) return;
+  win.localStorage.setItem(STORAGE_KEYS.feedback, JSON.stringify(records.slice(0, 300)));
+}
+
 function normalizeFeedbackRow(row: Record<string, unknown>): FeedbackRecord {
   const category = String(row.category || "service").toLowerCase() as FeedbackRecord["category"];
   const rating = Math.max(1, Math.min(5, Number(row.rating) || 5)) as FeedbackRecord["rating"];
@@ -757,6 +775,22 @@ export async function submitFeedback(entry: Omit<FeedbackRecord, "id" | "created
     throw new Error("Feedback comment must be 500 characters or less.");
   }
 
+  if (useLocalSegmentApiFallback()) {
+    const record: FeedbackRecord = {
+      id: crypto.randomUUID(),
+      memberId: entry.memberId,
+      memberName: entry.memberName.trim(),
+      category: entry.category,
+      rating: entry.rating,
+      comment,
+      contactOptIn: Boolean(entry.contactOptIn),
+      contactInfo: entry.contactInfo?.trim() ? entry.contactInfo.trim() : null,
+      createdAt: new Date().toISOString(),
+    };
+    saveLocalFeedbackRecords([record, ...loadLocalFeedbackRecords()]);
+    return record;
+  }
+
   const { data, error } = await supabase
     .from("member_feedback")
     .insert({
@@ -775,6 +809,8 @@ export async function submitFeedback(entry: Omit<FeedbackRecord, "id" | "created
 }
 
 export async function loadFeedback(): Promise<FeedbackRecord[]> {
+  if (useLocalSegmentApiFallback()) return loadLocalFeedbackRecords();
+
   const { data, error } = await supabase
     .from("member_feedback")
     .select("id,member_number,member_name,category,rating,comment,contact_opt_in,contact_info,created_at")

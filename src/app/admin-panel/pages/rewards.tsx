@@ -38,7 +38,6 @@ import {
   type RewardPartnerPerformance,
 } from "../../lib/promotions";
 import {
-  loadCampaignBudgetStatusViaApi,
   loadPartnerDashboardViaApi,
   publishCampaignViaApi,
   saveCampaignViaApi,
@@ -165,27 +164,23 @@ export default function AdminRewardsPage() {
     if (activeCampaignIds.length === 0) return;
 
     const refreshBudgetStatus = () => {
-      void Promise.allSettled(activeCampaignIds.map((campaignId) => loadCampaignBudgetStatusViaApi(campaignId)))
-        .then((results) => {
-          const statusByCampaignId = new Map(
-            results
-              .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof loadCampaignBudgetStatusViaApi>>> => result.status === "fulfilled")
-              .map((result) => [result.value.budgetStatus.campaignId, result.value.budgetStatus] as const)
-          );
-          if (statusByCampaignId.size === 0) return;
+      void loadCampaignPerformance()
+        .then((rows) => {
+          const performanceByCampaignId = new Map(rows.map((row) => [row.campaignId, row] as const));
+          if (performanceByCampaignId.size === 0) return;
           setCampaignPerformance((prev) =>
             prev.map((row) => {
-              const status = statusByCampaignId.get(row.campaignId);
-              return status
+              const next = performanceByCampaignId.get(row.campaignId);
+              return next
                 ? {
                     ...row,
-                    trackedTransactions: status.trackedTransactions,
-                    pointsAwarded: status.pointsAwarded,
-                    notificationsSent: status.notificationsSent,
-                    redemptionCount: status.redemptionCount,
-                    quantityLimit: status.quantityLimit,
-                    quantityClaimed: status.quantityClaimed,
-                    sellThrough: status.sellThrough,
+                    trackedTransactions: next.trackedTransactions,
+                    pointsAwarded: next.pointsAwarded,
+                    notificationsSent: next.notificationsSent,
+                    redemptionCount: next.redemptionCount,
+                    quantityLimit: next.quantityLimit,
+                    quantityClaimed: next.quantityClaimed,
+                    sellThrough: next.sellThrough,
                   }
                 : row;
             })
