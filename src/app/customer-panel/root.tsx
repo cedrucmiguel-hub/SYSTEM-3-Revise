@@ -8,16 +8,18 @@ import { Toaster } from "../../components/ui/sonner";
 import type { AppOutletContext } from "../types/app-context";
 import { loadMemberSnapshot } from "../lib/loyalty-supabase";
 import type { AppNotification } from "../lib/notifications";
-import { loadMemberSnapshotViaApi, loadNotificationsViaApi, markNotificationReadViaApi } from "../lib/api";
+import { clearApiReadCache, loadMemberSnapshotViaApi, loadNotificationsViaApi, markNotificationReadViaApi } from "../lib/api";
 
 import { supabase } from "../../utils/supabase/client";
-import { clearStoredAuth, touchStoredCustomerSession } from "../auth/auth";
+import { clearStoredAuth, getStoredCustomerSession, touchStoredCustomerSession } from "../auth/auth";
 import { brandTealSolidClass } from "../lib/ui-color-tokens";
 import { customerPageShellClass } from "./lib/page-theme";
 
 const USER_STORAGE_KEY = "points-dashboard-user-v1";
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-const LOCAL_REFRESH_INTERVAL_MS = 15_000;
+const LOCAL_REFRESH_INTERVAL_MS = 30_000;
+const CUSTOMER_REFRESH_MIN_INTERVAL_MS = 12_000;
+const NOTIFICATION_REFRESH_MIN_INTERVAL_MS = 20_000;
 
 function useLocalDemoRealtimeFallback() {
   return (
@@ -64,11 +66,24 @@ function deriveCompletedTaskIds(user: MemberData): string[] {
 
 function loadUser(): MemberData {
   try {
+    const session = getStoredCustomerSession();
     const raw = localStorage.getItem(USER_STORAGE_KEY);
-    if (!raw) return DEFAULT_MEMBER;
+    if (!raw) {
+      return {
+        ...DEFAULT_MEMBER,
+        memberId: session?.memberId || DEFAULT_MEMBER.memberId,
+        fullName: session?.fullName || DEFAULT_MEMBER.fullName,
+        email: session?.email || DEFAULT_MEMBER.email,
+        phone: session?.phone || DEFAULT_MEMBER.phone,
+      };
+    }
     const parsed = { ...DEFAULT_MEMBER, ...JSON.parse(raw) } as MemberData;
     return {
       ...parsed,
+      memberId: parsed.memberId || session?.memberId || "",
+      fullName: parsed.fullName || session?.fullName || "Member",
+      email: parsed.email || session?.email || "",
+      phone: parsed.phone || session?.phone || "",
       points: 0,
       pendingPoints: 0,
       lifetimePoints: 0,
@@ -89,6 +104,9 @@ export default function Root() {
   const [user, setUser] = useState<MemberData>(loadUser);
   const userRef = useRef(user);
   const refreshInFlightRef = useRef(false);
+  const lastRefreshAtRef = useRef(0);
+  const notificationsInFlightRef = useRef(false);
+  const lastNotificationsAtRef = useRef(0);
   const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const navigate = useNavigate();
@@ -100,34 +118,50 @@ export default function Root() {
 
   const basePath = "/customer";
 
-  const refreshUser = useCallback(async () => {
+  const refreshUser = useCallback(async (options?: { force?: boolean }) => {
+    const now = Date.now();
+    if (!options?.force && now - lastRefreshAtRef.current < CUSTOMER_REFRESH_MIN_INTERVAL_MS) return;
     if (refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
     try {
-      const snapshot = await loadMemberSnapshotViaApi(userRef.current).catch(() => loadMemberSnapshot(userRef.current));
+      if (options?.force) clearApiReadCache();
+      const currentUser = userRef.current;
+      const hasMemberLookup = Boolean(currentUser.memberId || currentUser.email);
+      const snapshot = hasMemberLookup
+        ? await loadMemberSnapshotViaApi(currentUser).catch(() => loadMemberSnapshot(currentUser))
+        : await loadMemberSnapshot(currentUser);
       if (!snapshot) return;
       setUser((prev) => ({ ...prev, ...snapshot }));
+      lastRefreshAtRef.current = Date.now();
     } catch {
     } finally {
       refreshInFlightRef.current = false;
     }
   }, []);
 
-  const loadNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async (options?: { force?: boolean }) => {
+    const now = Date.now();
+    if (!options?.force && now - lastNotificationsAtRef.current < NOTIFICATION_REFRESH_MIN_INTERVAL_MS) return;
+    if (notificationsInFlightRef.current) return;
+    notificationsInFlightRef.current = true;
     try {
+      if (options?.force) clearApiReadCache();
       const response = await loadNotificationsViaApi({
         memberId: userRef.current.memberId || undefined,
         email: userRef.current.email || undefined,
         limit: 20,
       });
       setNotifications(response.notifications.filter((item) => item.status !== "read"));
+      lastNotificationsAtRef.current = Date.now();
     } catch {
+    } finally {
+      notificationsInFlightRef.current = false;
     }
   }, []);
 
   useEffect(() => {
-    refreshUser().catch(() => {});
-    loadNotifications().catch(() => {});
+    refreshUser({ force: true }).catch(() => {});
+    loadNotifications({ force: true }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -158,7 +192,7 @@ export default function Root() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "notification_outbox" },
         () => {
-          loadNotifications().catch(() => {});
+          loadNotifications({ force: true }).catch(() => {});
         }
       )
       .subscribe();
@@ -169,14 +203,14 @@ export default function Root() {
         "postgres_changes",
         { event: "*", schema: "public", table: "loyalty_members" },
         () => {
-          refreshUser().catch(() => {});
+          refreshUser({ force: true }).catch(() => {});
         }
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "loyalty_transactions" },
         () => {
-          refreshUser().catch(() => {});
+          refreshUser({ force: true }).catch(() => {});
         }
       )
       .subscribe();

@@ -58,7 +58,7 @@ export default function EarnPoints() {
       });
 
       setCompletedTaskIds((prev) => [...new Set([...prev, taskId])]);
-      await refreshUser();
+      await refreshUser({ force: true });
       toast.success(`${title} completed! +${points} points`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to complete task");
@@ -92,7 +92,7 @@ export default function EarnPoints() {
         productCategory: purchaseCategory,
       });
 
-      await refreshUser();
+      await refreshUser({ force: true });
       toast.success(`Purchase recorded! +${response.result.pointsAdded} points`, {
         description:
           response.result.bonusPointsAdded > 0

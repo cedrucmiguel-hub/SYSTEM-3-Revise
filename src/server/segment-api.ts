@@ -12,28 +12,59 @@ import { HttpError } from "./http-error";
 import { previewSegmentAudience, type SegmentPreviewCondition } from "./segment-preview";
 import { listLocalSegments, saveLocalSegment } from "./local-segments";
 
+function normalizeLogicMode(value: unknown) {
+  const normalized = String(value || "AND").trim().toUpperCase();
+  return normalized === "OR" ? "OR" : "AND";
+}
+
+function normalizeSegmentField(value: unknown) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  if (normalized === "tier") return "Tier";
+  if (normalized === "last activity" || normalized === "last activity at") return "Last Activity";
+  if (normalized === "points" || normalized === "point balance" || normalized === "points balance") return "Points Balance";
+  return value;
+}
+
+function conditionId(input: { field: string; operator: string; value: string }) {
+  return `${input.field}-${input.operator}-${input.value}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "condition";
+}
+
 const conditionSchema = z
   .object({
-    id: z.string().trim().min(1).max(80),
-    field: z.enum(["Tier", "Last Activity", "Points Balance"]),
+    id: z.preprocess(
+      (value) => {
+        const trimmed = String(value ?? "").trim();
+        return trimmed || undefined;
+      },
+      z.string().trim().min(1).max(80).optional(),
+    ),
+    field: z.preprocess(normalizeSegmentField, z.enum(["Tier", "Last Activity", "Points Balance"])),
     operator: z.string().trim().min(1).max(32),
     value: z.string().trim().min(1).max(120),
   })
-  .strict();
+  .strict()
+  .transform((condition) => ({
+    ...condition,
+    id: condition.id || conditionId(condition),
+  }));
 
 export const saveSegmentSchema = z
   .object({
     id: z.string().trim().max(80).optional(),
     name: z.string().trim().min(1).max(80),
     description: z.string().trim().max(240).optional(),
-    logicMode: z.enum(["AND", "OR"]).optional(),
+    logicMode: z.preprocess(normalizeLogicMode, z.enum(["AND", "OR"])).optional(),
     conditions: z.array(conditionSchema).max(12).optional(),
   })
   .strict();
 
 export const previewSegmentSchema = z
   .object({
-    logicMode: z.enum(["AND", "OR"]),
+    logicMode: z.preprocess(normalizeLogicMode, z.enum(["AND", "OR"])),
     conditions: z.array(conditionSchema).min(1).max(12),
   })
   .strict();

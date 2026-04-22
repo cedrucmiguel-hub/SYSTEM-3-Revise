@@ -476,7 +476,7 @@ export default function CustomerEngagementPage() {
         },
       }));
 
-      await refreshUser();
+      await refreshUser({ force: true });
       toast.success(`Challenge reward claimed. +${rewardPoints} points`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to claim challenge reward.");
@@ -509,7 +509,7 @@ export default function CustomerEngagementPage() {
 
   const handleBirthdayClaim = async () => {
     if (birthdaySettings.fulfillmentMode === "auto_credit") {
-      await refreshUser();
+      await refreshUser({ force: true });
       const status = await loadBirthdayRewardStatus(user.memberId, user.email);
       setBirthdayStatus(status);
       toast.success(
@@ -530,7 +530,7 @@ export default function CustomerEngagementPage() {
     }
     try {
       const result = await claimBirthdayReward(user.memberId, user.email);
-      await refreshUser();
+      await refreshUser({ force: true });
       const status = await loadBirthdayRewardStatus(user.memberId, user.email);
       setBirthdayStatus(status);
       toast.success(
@@ -660,7 +660,7 @@ export default function CustomerEngagementPage() {
       });
 
       setUser((prev) => ({ ...prev, surveysCompleted: prev.surveysCompleted + 1 }));
-      await refreshUser();
+      await refreshUser({ force: true });
       toast.success(`Survey submitted. +${survey.bonusPoints} points added.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to submit survey.");

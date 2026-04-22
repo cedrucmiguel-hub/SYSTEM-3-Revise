@@ -28,9 +28,18 @@ const optionalTrimmedString = (max: number) =>
     })
     .optional();
 
+function requireMemberIdentity<T extends { memberIdentifier?: string; fallbackEmail?: string }>(
+  body: T,
+): Omit<T, "memberIdentifier"> & { memberIdentifier: string } {
+  return {
+    ...body,
+    memberIdentifier: String(body.memberIdentifier || body.fallbackEmail || "").trim(),
+  };
+}
+
 export const awardPointsSchema = z
   .object({
-    memberIdentifier: trimmedString.max(80),
+    memberIdentifier: optionalTrimmedString(80),
     fallbackEmail: z.string().trim().email().max(254).optional(),
     points: z.coerce.number().int().min(0).max(1_000_000),
     transactionType: z.enum(["PURCHASE", "MANUAL_AWARD", "EARN"]),
@@ -42,13 +51,18 @@ export const awardPointsSchema = z
     productCode: optionalTrimmedString(80),
     productCategory: optionalTrimmedString(80),
   })
-  .strict();
+  .strict()
+  .refine((body) => Boolean(body.memberIdentifier || body.fallbackEmail), {
+    message: "memberIdentifier or fallbackEmail is required.",
+    path: ["memberIdentifier"],
+  })
+  .transform(requireMemberIdentity);
 
 type AwardPointsInput = z.infer<typeof awardPointsSchema>;
 
 export const redeemPointsSchema = z
   .object({
-    memberIdentifier: trimmedString.max(80),
+    memberIdentifier: optionalTrimmedString(80),
     fallbackEmail: z.string().trim().email().max(254).optional(),
     points: z.coerce.number().int().min(1).max(1_000_000),
     reason: trimmedString.max(240),
@@ -56,7 +70,12 @@ export const redeemPointsSchema = z
     rewardCatalogId: z.union([z.string().trim().max(80), z.number().int()]).nullable().optional(),
     promotionCampaignId: z.string().trim().max(80).nullable().optional(),
   })
-  .strict();
+  .strict()
+  .refine((body) => Boolean(body.memberIdentifier || body.fallbackEmail), {
+    message: "memberIdentifier or fallbackEmail is required.",
+    path: ["memberIdentifier"],
+  })
+  .transform(requireMemberIdentity);
 
 export const transactionCompletedSchema = z
   .object({
@@ -65,7 +84,7 @@ export const transactionCompletedSchema = z
     transactionReference: trimmedString.max(120).optional(),
     transactionRef: trimmedString.max(120).optional(),
     reference: trimmedString.max(120).optional(),
-    memberIdentifier: trimmedString.max(80),
+    memberIdentifier: optionalTrimmedString(80),
     fallbackEmail: z.string().trim().email().max(254).optional(),
     amountSpent: z.coerce.number().min(0).max(10_000_000),
     reason: trimmedString.max(240).optional(),
@@ -76,7 +95,12 @@ export const transactionCompletedSchema = z
     message: "transactionReference is required for transaction.completed events.",
     path: ["transactionReference"],
   })
-  .strict();
+  .refine((body) => Boolean(body.memberIdentifier || body.fallbackEmail), {
+    message: "memberIdentifier or fallbackEmail is required.",
+    path: ["memberIdentifier"],
+  })
+  .strict()
+  .transform(requireMemberIdentity);
 
 function resolveTransactionReference(body: z.infer<typeof transactionCompletedSchema>) {
   return String(body.transactionReference || body.transactionRef || body.reference || body.eventId || "").trim();

@@ -2,32 +2,68 @@ import type { MemberData, Transaction } from "../types/loyalty";
 import type { PromotionCampaign } from "./promotions";
 import type { AppNotification } from "./notifications";
 
+const GET_CACHE_TTL_MS = 20_000;
+const getCache = new Map<string, { loadedAt: number; payload: unknown }>();
+const getInFlight = new Map<string, Promise<unknown>>();
+
 export async function requestJson<TResponse = unknown>(
   url: string,
   init?: RequestInit & { idempotencyKey?: string },
 ): Promise<TResponse> {
+  const method = String(init?.method || "GET").toUpperCase();
+  const isGet = method === "GET";
+  const now = Date.now();
+
+  if (isGet) {
+    const cached = getCache.get(url);
+    if (cached && now - cached.loadedAt < GET_CACHE_TTL_MS) return cached.payload as TResponse;
+
+    const inFlight = getInFlight.get(url);
+    if (inFlight) return inFlight as Promise<TResponse>;
+  }
+
   const headers = new Headers(init?.headers ?? {});
   headers.set("Content-Type", "application/json");
   if (init?.idempotencyKey) {
     headers.set("Idempotency-Key", init.idempotencyKey);
   }
 
-  const response = await fetch(url, {
+  const request = fetch(url, {
     cache: init?.cache ?? "no-store",
     ...init,
     headers,
-  });
+  })
+    .then(async (response) => {
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String((payload as { error?: unknown }).error || `Request failed (${response.status}).`));
+      }
+      if (isGet) {
+        getCache.set(url, { loadedAt: Date.now(), payload });
+      } else {
+        getCache.clear();
+      }
+      return payload as TResponse;
+    })
+    .finally(() => {
+      if (isGet) getInFlight.delete(url);
+    });
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(String((payload as { error?: unknown }).error || `Request failed (${response.status}).`));
-  }
+  if (isGet) getInFlight.set(url, request);
+  return request;
+}
 
-  return payload as TResponse;
+export function clearApiReadCache() {
+  getCache.clear();
+  getInFlight.clear();
 }
 
 export function createIdempotencyKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function resolveMemberIdentifier(memberIdentifier?: string, fallbackEmail?: string) {
+  return String(memberIdentifier || fallbackEmail || "").trim();
 }
 
 function normalizeTier(value: unknown): MemberData["tier"] {
@@ -176,6 +212,7 @@ export async function awardPointsViaApi(input: {
   transactionReference?: string;
 }) {
   const { transactionReference, ...payload } = input;
+  const memberIdentifier = resolveMemberIdentifier(input.memberIdentifier, input.fallbackEmail);
   return requestJson<{
     ok: true;
     result: {
@@ -188,7 +225,7 @@ export async function awardPointsViaApi(input: {
     replayed: boolean;
   }>("/api/points/award", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, memberIdentifier }),
     idempotencyKey: transactionReference || createIdempotencyKey("points-award"),
   });
 }
@@ -203,6 +240,7 @@ export async function recordTransactionCompletedViaApi(input: {
   productCode?: string;
   productCategory?: string;
 }) {
+  const memberIdentifier = resolveMemberIdentifier(input.memberIdentifier, input.fallbackEmail);
   return requestJson<{
     ok: true;
     result: unknown;
@@ -212,6 +250,7 @@ export async function recordTransactionCompletedViaApi(input: {
     body: JSON.stringify({
       eventType: "transaction.completed",
       ...input,
+      memberIdentifier,
     }),
   });
 }
@@ -225,6 +264,7 @@ export async function redeemPointsViaApi(input: {
   rewardCatalogId?: string | number | null;
   promotionCampaignId?: string | null;
 }) {
+  const memberIdentifier = resolveMemberIdentifier(input.memberIdentifier, input.fallbackEmail);
   return requestJson<{
     ok: true;
     result: {
@@ -234,7 +274,7 @@ export async function redeemPointsViaApi(input: {
     };
   }>("/api/points/redeem", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, memberIdentifier }),
   });
 }
 

@@ -302,7 +302,7 @@ export default function Rewards() {
       }).catch(() => undefined);
     }
 
-    await refreshUser();
+    await refreshUser({ force: true });
   };
 
   const handleReserve = (reward: Reward) => {

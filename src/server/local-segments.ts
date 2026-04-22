@@ -17,17 +17,17 @@ function generatedSegmentId(name: string) {
 
 function cleanLocalSegmentName(name: string) {
   const trimmed = String(name || "").trim().replace(/\s+/g, " ");
-  const withoutToolPrefix = trimmed
+  const systemSegmentCandidate = trimmed
     .replace(/^(postman|qa|gateway)\s+/i, "")
     .replace(/\s+local$/i, "")
     .trim();
 
-  if (/high\s+value/i.test(withoutToolPrefix)) return "High Value";
-  if (/^active$/i.test(withoutToolPrefix)) return "Active";
-  if (/^at\s+risk$/i.test(withoutToolPrefix)) return "At Risk";
-  if (/^inactive$/i.test(withoutToolPrefix)) return "Inactive";
+  if (/^high\s+value$/i.test(systemSegmentCandidate)) return "High Value";
+  if (/^active$/i.test(systemSegmentCandidate)) return "Active";
+  if (/^at\s+risk$/i.test(systemSegmentCandidate)) return "At Risk";
+  if (/^inactive$/i.test(systemSegmentCandidate)) return "Inactive";
 
-  return withoutToolPrefix || "Segment";
+  return trimmed || "Segment";
 }
 
 export async function saveLocalSegment(input: {
