@@ -1,1 +1,3 @@
-export { communicationsEmailHandler as default } from "../../../server/communication-api";
+import { createNestProxyHandler } from "../../../server/nest-proxy";
+
+export default createNestProxyHandler("/communications/email");

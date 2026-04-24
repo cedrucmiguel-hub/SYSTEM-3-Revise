@@ -1,1 +1,3 @@
-export { transactionCompletedHandler as default } from "../../../server/points-api";
+import { createNestProxyHandler } from "../../../server/nest-proxy";
+
+export default createNestProxyHandler("/events/transaction-completed");

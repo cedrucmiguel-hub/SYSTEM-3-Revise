@@ -1,12 +1,3 @@
-import type { NextApiHandler } from "next";
-import { campaignsHandler, campaignsListHandler } from "../../../server/campaign-api";
+import { createNestProxyHandler } from "../../../server/nest-proxy";
 
-const handler: NextApiHandler = (req, res) => {
-  if (req.method?.toUpperCase() === "GET") {
-    return campaignsListHandler(req, res);
-  }
-
-  return campaignsHandler(req, res);
-};
-
-export default handler;
+export default createNestProxyHandler("/campaigns");

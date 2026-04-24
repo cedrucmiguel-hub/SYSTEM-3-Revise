@@ -2,9 +2,34 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { LocalRuntimeService } from "../local-runtime/local-runtime.service";
 import { cleanString, nowIso } from "../common/utils";
 
+type OutboxMessage = {
+  id: string;
+  type: "email" | "sms" | "referral";
+  channel: "email" | "sms";
+  status: "queued" | "sent" | "failed" | "demo";
+  mode: "demo" | "provider";
+  memberId: string | null;
+  recipient: string | null;
+  subject?: string | null;
+  message: string;
+  createdAt: string;
+  campaignId?: string | null;
+  referralId?: string | null;
+  read?: boolean;
+};
+
 @Injectable()
 export class CommunicationsService {
   constructor(private readonly runtime: LocalRuntimeService) {}
+
+  private providerMode() {
+    return process.env.EMAIL_PROVIDER || process.env.SMS_PROVIDER ? "provider" : "demo";
+  }
+
+  private queueMessage(state: { notifications: Array<Record<string, unknown>> }, payload: OutboxMessage) {
+    state.notifications.unshift(payload);
+    return payload;
+  }
 
   async sendEmail(input: Record<string, unknown>) {
     const campaignId = cleanString(input.campaignId) || null;
@@ -14,22 +39,28 @@ export class CommunicationsService {
       throw new BadRequestException("campaignId, memberId, or email is required.");
     }
 
+    const mode = this.providerMode();
     return this.runtime.update((state) => {
-      const notification = {
+      const notification = this.queueMessage(state, {
         id: `email-${Date.now()}`,
         type: "email",
         channel: "email",
-        status: "queued",
+        status: mode === "demo" ? "demo" : "queued",
+        mode,
         campaignId,
         memberId,
-        email,
+        recipient: email,
         subject: cleanString(input.subject) || "Loyalty update",
         message: cleanString(input.message) || "You have a loyalty update.",
         read: false,
         createdAt: nowIso(),
+      });
+      return {
+        ...notification,
+        ok: true,
+        mode,
+        message: mode === "demo" ? "Demo notification queued" : "Email queued",
       };
-      state.notifications.unshift(notification);
-      return notification;
     });
   }
 
@@ -39,21 +70,44 @@ export class CommunicationsService {
     if (!memberId && !cleanString(input.phone)) throw new BadRequestException("memberId or phone is required.");
     if (!message) throw new BadRequestException("message is required.");
 
+    const mode = this.providerMode();
     return this.runtime.update((state) => {
-      const notification = {
+      const notification = this.queueMessage(state, {
         id: `sms-${Date.now()}`,
         type: "sms",
         channel: "sms",
-        status: "queued",
+        status: mode === "demo" ? "demo" : "queued",
+        mode,
         memberId,
-        phone: cleanString(input.phone) || null,
+        recipient: cleanString(input.phone) || null,
         message,
         read: false,
         createdAt: nowIso(),
+      });
+      return {
+        ...notification,
+        ok: true,
+        mode,
+        message: mode === "demo" ? "Demo notification queued" : "SMS queued",
       };
-      state.notifications.unshift(notification);
-      return notification;
     });
+  }
+
+  async outbox(limit = 100) {
+    const state = await this.runtime.read();
+    return (state.notifications || []).slice(0, limit).map((entry) => ({
+      id: entry.id,
+      type: entry.type || entry.channel || "email",
+      channel: entry.channel || entry.type || "email",
+      recipient: entry.recipient || entry.email || entry.phone || null,
+      subject: entry.subject || null,
+      message: entry.message || "",
+      status: entry.status || "queued",
+      mode: entry.mode || "demo",
+      memberId: entry.memberId || null,
+      createdAt: entry.createdAt || nowIso(),
+      campaignId: entry.campaignId || null,
+    }));
   }
 
   async analytics() {

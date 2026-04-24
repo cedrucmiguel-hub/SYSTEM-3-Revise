@@ -31,6 +31,11 @@ export class CommunicationsController {
     return { ok: true, analytics: await this.communications.analytics() };
   }
 
+  @Get("communications/outbox")
+  async outbox() {
+    return { ok: true, outbox: await this.communications.outbox(), mode: "demo" };
+  }
+
   @Post("unsubscribe")
   async unsubscribe(@Body() body: UnsubscribeDto, @Req() request: Request) {
     return { ok: true, preferences: await this.communications.unsubscribe(merge(body, request)) };

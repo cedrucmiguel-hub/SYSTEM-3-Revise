@@ -1,1 +1,3 @@
-export { previewSegmentHandler as default } from "../../../server/segment-api";
+import { createNestProxyHandler } from "../../../server/nest-proxy";
+
+export default createNestProxyHandler("/segments/preview");

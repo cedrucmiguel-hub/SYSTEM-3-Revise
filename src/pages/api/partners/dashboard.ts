@@ -1,1 +1,3 @@
-export { partnerDashboardHandler as default } from "../../../server/partner-api";
+import { createNestProxyHandler } from "../../../server/nest-proxy";
+
+export default createNestProxyHandler("/partners/dashboard");

@@ -1,1 +1,3 @@
-export { triggerSmsHandler as default } from "../../../server/notification-api";
+import { createNestProxyHandler } from "../../../server/nest-proxy";
+
+export default createNestProxyHandler("/notifications/sms");

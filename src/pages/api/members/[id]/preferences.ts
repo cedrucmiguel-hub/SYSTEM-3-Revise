@@ -1,1 +1,3 @@
-export { memberPreferencesHandler as default } from "../../../../server/member-api";
+import { createNestProxyHandler } from "../../../../server/nest-proxy";
+
+export default createNestProxyHandler((req) => `/members/${encodeURIComponent(String(req.query.id || ""))}/preferences`);

@@ -1,1 +1,3 @@
-export { campaignByIdHandler as default } from "../../../server/campaign-api";
+import { createNestProxyHandler } from "../../../server/nest-proxy";
+
+export default createNestProxyHandler((req) => `/campaigns/${encodeURIComponent(String(req.query.id || ""))}`);

@@ -21,15 +21,36 @@ type RedeemInput = {
   promotionCampaignId?: string | null;
 };
 
-function resolveTier(points: number) {
+function resolveTier(points: number, rules?: Array<{ tier_label: string; min_points: number; is_active: boolean }>) {
+  const activeRules = (rules || [])
+    .filter((rule) => rule.is_active !== false)
+    .sort((left, right) => Number(right.min_points || 0) - Number(left.min_points || 0));
+  for (const rule of activeRules) {
+    if (points >= Number(rule.min_points || 0)) {
+      return String(rule.tier_label || "Bronze");
+    }
+  }
+  if (points >= 1500) return "Platinum";
   if (points >= 750) return "Gold";
   if (points >= 250) return "Silver";
   return "Bronze";
 }
 
-function awardPoints(input: AwardInput) {
+function awardPoints(
+  input: AwardInput,
+  memberTier: string,
+  earningRules?: Array<{ tier_label: string; peso_per_point: number; multiplier: number; is_active: boolean }>,
+) {
   if (input.points > 0) return input.points;
-  if (input.amountSpent && input.amountSpent > 0) return Math.floor(input.amountSpent / 10);
+  if (input.amountSpent && input.amountSpent > 0) {
+    const tierRule =
+      earningRules?.find(
+        (rule) => rule.is_active !== false && String(rule.tier_label).toLowerCase() === String(memberTier).toLowerCase(),
+      ) || null;
+    const pesoPerPoint = Math.max(0.01, Number(tierRule?.peso_per_point || 10));
+    const multiplier = Math.max(0.01, Number(tierRule?.multiplier || 1));
+    return Math.max(1, Math.floor((input.amountSpent / pesoPerPoint) * multiplier));
+  }
   return 0;
 }
 
@@ -50,8 +71,19 @@ function buildLocalMemberActivityResponse(
       reference: string | null;
     }>;
   },
+  memberProfile?: {
+    name?: string;
+    mobile?: string;
+    memberSince?: string;
+    birthdate?: string | null;
+    address?: string | null;
+    surveysCompleted?: number;
+    segment?: string;
+    status?: "Active" | "Inactive";
+  } | null,
   fallbackEmail?: string,
 ) {
+  const [firstName = "Demo", ...lastParts] = String(memberProfile?.name || "Demo Member").trim().split(/\s+/);
   return {
     balance: {
       member_id: memberId,
@@ -63,14 +95,18 @@ function buildLocalMemberActivityResponse(
       id: memberId,
       member_id: memberId,
       member_number: memberId,
-      first_name: "Demo",
-      last_name: "Member",
+      first_name: firstName,
+      last_name: lastParts.join(" ") || "Member",
       email: fallbackEmail ?? existing.email ?? "demo@example.com",
-      phone: null,
-      birthdate: null,
+      phone: memberProfile?.mobile ?? null,
+      birthdate: memberProfile?.birthdate ?? null,
       points_balance: existing.pointsBalance,
       tier: existing.tier,
-      enrollment_date: new Date().toISOString(),
+      enrollment_date: memberProfile?.memberSince ?? new Date().toISOString(),
+      address: memberProfile?.address ?? null,
+      surveys_completed: Number(memberProfile?.surveysCompleted || 0),
+      effective_segment: memberProfile?.segment ?? "Active",
+      status: memberProfile?.status ?? "Active",
     },
   };
 }
@@ -85,7 +121,9 @@ export async function awardLocalPoints(input: AwardInput, reference?: string) {
       tier: "Bronze",
       history: [],
     };
-    const points = awardPoints(input);
+    const memberProfile = state.members[memberId];
+    const currentTier = memberProfile?.tier || existing.tier || "Bronze";
+    const points = awardPoints(input, currentTier, state.earningRules);
     const nextBalance = existing.pointsBalance + points;
     const tx = {
       id: reference || `award-${Date.now()}`,
@@ -95,21 +133,47 @@ export async function awardLocalPoints(input: AwardInput, reference?: string) {
       date: new Date().toISOString(),
       expiry_date: null,
       reference: reference ?? null,
+      receipt_id: reference ?? null,
+      amount_spent: input.amountSpent ?? null,
+      product_category: input.productCategory ?? null,
+      product_code: input.productCode ?? null,
     };
+    const nextTier = resolveTier(nextBalance, state.tierRules);
 
     state.pointMembers[memberId] = {
       ...existing,
       email: input.fallbackEmail ?? existing.email,
       pointsBalance: nextBalance,
-      tier: resolveTier(nextBalance),
+      tier: nextTier,
       history: [tx, ...existing.history],
+    };
+    state.members[memberId] = {
+      id: memberId,
+      memberId,
+      memberNumber: memberId,
+      name: memberProfile?.name || "Demo Member",
+      email: input.fallbackEmail ?? memberProfile?.email ?? existing.email ?? "demo@example.com",
+      mobile: memberProfile?.mobile || "Not provided",
+      memberSince: memberProfile?.memberSince || new Date().toISOString(),
+      tier: nextTier,
+      points: nextBalance,
+      lifetimePoints: Math.max(
+        Number(memberProfile?.lifetimePoints || 0),
+        Number(memberProfile?.lifetimePoints || 0) + Math.max(points, 0),
+      ),
+      segment: memberProfile?.segment || (nextBalance >= 500 ? "High Value" : "Active"),
+      status: memberProfile?.status || "Active",
+      profileImage: memberProfile?.profileImage ?? null,
+      birthdate: memberProfile?.birthdate ?? null,
+      address: memberProfile?.address ?? null,
+      surveysCompleted: Number(memberProfile?.surveysCompleted || 0),
     };
 
     return {
       memberId,
       pointsAwarded: points,
       newBalance: nextBalance,
-      tier: resolveTier(nextBalance),
+      tier: nextTier,
       transaction: tx,
       source: "local_runtime",
     };
@@ -141,20 +205,26 @@ export async function redeemLocalPoints(input: RedeemInput) {
       expiry_date: null,
       reference: input.rewardCatalogId === undefined ? null : String(input.rewardCatalogId),
     };
+    const nextTier = resolveTier(nextBalance, state.tierRules);
 
     state.pointMembers[memberId] = {
       ...existing,
       email: input.fallbackEmail ?? existing.email,
       pointsBalance: nextBalance,
-      tier: resolveTier(nextBalance),
+      tier: nextTier,
       history: [tx, ...existing.history],
     };
+    const memberProfile = state.members[memberId];
+    if (memberProfile) {
+      memberProfile.points = nextBalance;
+      memberProfile.tier = nextTier;
+    }
 
     return {
       memberId,
       pointsRedeemed: input.points,
       newBalance: nextBalance,
-      tier: resolveTier(nextBalance),
+      tier: nextTier,
       transaction: tx,
       source: "local_runtime",
     };
@@ -162,9 +232,12 @@ export async function redeemLocalPoints(input: RedeemInput) {
 }
 
 export async function loadLocalMemberActivity(memberId: string, fallbackEmail?: string) {
-  const existingMember = await withApiState((state) => state.pointMembers[memberId] ?? null);
-  if (existingMember && (!fallbackEmail || existingMember.email === fallbackEmail)) {
-    return buildLocalMemberActivityResponse(memberId, existingMember, fallbackEmail);
+  const existingMember = await withApiState((state) => ({
+    points: state.pointMembers[memberId] ?? null,
+    profile: state.members[memberId] ?? null,
+  }));
+  if (existingMember.points && (!fallbackEmail || existingMember.points.email === fallbackEmail)) {
+    return buildLocalMemberActivityResponse(memberId, existingMember.points, existingMember.profile, fallbackEmail);
   }
 
   return updateApiState((state) => {
@@ -181,7 +254,25 @@ export async function loadLocalMemberActivity(memberId: string, fallbackEmail?: 
       email: fallbackEmail ?? existing.email,
     };
 
-    return buildLocalMemberActivityResponse(memberId, existing, fallbackEmail);
+    if (!state.members[memberId]) {
+      state.members[memberId] = {
+        id: memberId,
+        memberId,
+        memberNumber: memberId,
+        name: "Demo Member",
+        email: fallbackEmail ?? existing.email ?? "demo@example.com",
+        mobile: "Not provided",
+        memberSince: new Date().toISOString(),
+        tier: existing.tier,
+        points: existing.pointsBalance,
+        lifetimePoints: Math.max(existing.pointsBalance, 0),
+        segment: existing.pointsBalance >= 500 ? "High Value" : "Active",
+        status: "Active",
+        surveysCompleted: 0,
+      };
+    }
+
+    return buildLocalMemberActivityResponse(memberId, existing, state.members[memberId], fallbackEmail);
   });
 }
 

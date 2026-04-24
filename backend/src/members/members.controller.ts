@@ -5,6 +5,11 @@ import { MembersService } from "./members.service";
 export class MembersController {
   constructor(private readonly members: MembersService) {}
 
+  @Get()
+  async list() {
+    return { ok: true, members: await this.members.list(), source: "local_runtime" };
+  }
+
   @Get(":id/profile")
   async profile(@Param("id") id: string, @Query("email") email?: string) {
     return { ok: true, memberId: id, profile: await this.members.profile(id, email) };
@@ -27,5 +32,14 @@ export class MembersController {
   @Patch(":id/preferences")
   async preferences(@Param("id") id: string, @Body() body: Record<string, unknown>) {
     return { ok: true, memberId: id, preference: await this.members.preferences(id, body || {}) };
+  }
+
+  @Patch(":id/segment")
+  async segment(@Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return {
+      ok: true,
+      memberId: id,
+      member: await this.members.updateSegment(id, String(body.segment || body.effectiveSegment || "Active")),
+    };
   }
 }

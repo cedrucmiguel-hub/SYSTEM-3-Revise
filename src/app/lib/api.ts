@@ -68,6 +68,7 @@ function resolveMemberIdentifier(memberIdentifier?: string, fallbackEmail?: stri
 
 function normalizeTier(value: unknown): MemberData["tier"] {
   const tier = String(value || "").trim().toLowerCase();
+  if (tier === "platinum") return "Gold";
   if (tier === "gold") return "Gold";
   if (tier === "silver") return "Silver";
   return "Bronze";
@@ -104,7 +105,7 @@ export async function loadMemberSnapshotViaApi(currentUser: MemberData): Promise
   const resolvedMemberId = memberId || email;
   const query = email ? `?email=${encodeURIComponent(email)}` : "";
 
-  const [pointsResponse, historyResponse] = await Promise.all([
+  const [pointsResponse, historyResponse, profileResponse] = await Promise.all([
     requestJson<{
       ok: true;
       memberId: string;
@@ -116,8 +117,30 @@ export async function loadMemberSnapshotViaApi(currentUser: MemberData): Promise
       memberId: string;
       history: Array<Record<string, unknown>>;
     }>(`/api/members/${encodeURIComponent(resolvedMemberId)}/points-history${query}`),
+    requestJson<{
+      ok: true;
+      memberId: string;
+      profile: Record<string, unknown>;
+    }>(`/api/members/${encodeURIComponent(resolvedMemberId)}/profile${query}`).catch(() => ({
+      ok: true as const,
+      memberId: resolvedMemberId,
+      profile: {},
+    })),
   ]);
 
+  const profile = (profileResponse.profile || {}) as {
+    id?: string;
+    name?: string;
+    email?: string;
+    mobile?: string;
+    birthdate?: string;
+    address?: string;
+    memberSince?: string;
+    lifetimePoints?: number;
+    status?: string;
+    surveysCompleted?: number;
+    tier?: string;
+  };
   const balance = Number(pointsResponse.points ?? pointsResponse.balance?.points_balance ?? currentUser.points ?? 0);
   const sortedHistory = [...(historyResponse.history || [])].sort(
     (left, right) => new Date(transactionDate(right)).getTime() - new Date(transactionDate(left)).getTime(),
@@ -181,21 +204,24 @@ export async function loadMemberSnapshotViaApi(currentUser: MemberData): Promise
     : 0;
 
   return {
-    memberId: String(pointsResponse.balance?.member_id || currentUser.memberId),
-    fullName: currentUser.fullName,
-    email: currentUser.email,
-    phone: currentUser.phone || "",
-    birthdate: currentUser.birthdate,
+    memberId: String(profile.id || pointsResponse.balance?.member_id || currentUser.memberId),
+    fullName: String(profile.name || currentUser.fullName || "Member"),
+    email: String(profile.email || currentUser.email || ""),
+    phone: String(profile.mobile || currentUser.phone || ""),
+    birthdate: String(profile.birthdate || currentUser.birthdate || ""),
+    address: String(profile.address || currentUser.address || ""),
     profileImage: currentUser.profileImage || "",
-    memberSince: currentUser.memberSince,
+    memberSince: String(profile.memberSince || currentUser.memberSince || ""),
     points: balance,
     pendingPoints,
-    lifetimePoints,
+    lifetimePoints: Number(profile.lifetimePoints ?? lifetimePoints ?? currentUser.lifetimePoints ?? 0),
     earnedThisMonth,
     redeemedThisMonth,
     expiringPoints,
     daysUntilExpiry,
-    tier: normalizeTier(pointsResponse.balance?.tier),
+    tier: normalizeTier(profile.tier || pointsResponse.balance?.tier),
+    status: String(profile.status || currentUser.status || "Active") === "Inactive" ? "Inactive" : "Active",
+    surveysCompleted: Number(profile.surveysCompleted ?? currentUser.surveysCompleted ?? 0),
     transactions,
   };
 }
@@ -404,8 +430,9 @@ export async function triggerSmsViaApi(input: {
   segment?: string;
   memberId?: string;
   email?: string;
+  phone?: string;
 }) {
-  return requestJson<{ ok: true; queued: number }>("/api/notifications/sms", {
+  return requestJson<{ ok: true; result: Record<string, unknown> }>("/api/notifications/sms", {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -419,7 +446,7 @@ export async function scheduleEmailViaApi(input: {
   email?: string;
   scheduledFor?: string;
 }) {
-  return requestJson<{ ok: true; queued: number; scheduledFor: string | null }>("/api/communications/email", {
+  return requestJson<{ ok: true; result: Record<string, unknown> }>("/api/communications/email", {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -463,6 +490,147 @@ export async function loadCommunicationAnalyticsViaApi() {
       byStatus: Record<string, number>;
     };
   }>("/api/communications/analytics");
+}
+
+export async function loadCommunicationOutboxViaApi() {
+  return requestJson<{
+    ok: true;
+    outbox: Array<{
+      id: string;
+      type: string;
+      channel: string;
+      recipient: string | null;
+      subject: string | null;
+      message: string;
+      status: string;
+      mode: string;
+      createdAt: string;
+    }>;
+    mode?: string;
+  }>("/api/communications/outbox");
+}
+
+export async function loadTierRulesViaApi() {
+  return requestJson<{
+    ok: true;
+    tiers: Array<{ tier_label: string; min_points: number; is_active?: boolean }>;
+    earningRules: Array<{ tier_label: string; peso_per_point: number; multiplier: number; is_active?: boolean }>;
+    mode?: string;
+  }>("/api/tiers/rules");
+}
+
+export async function saveTierRulesViaApi(input: {
+  tiers: Array<{ tier_label: string; min_points: number; is_active?: boolean }>;
+  earningRules: Array<{ tier_label: string; peso_per_point: number; multiplier: number; is_active?: boolean }>;
+}) {
+  return requestJson<{
+    ok: true;
+    tiers: Array<{ tier_label: string; min_points: number; is_active?: boolean }>;
+    earningRules: Array<{ tier_label: string; peso_per_point: number; multiplier: number; is_active?: boolean }>;
+    mode?: string;
+  }>("/api/tiers/rules", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function recalculateTiersViaApi() {
+  return requestJson<{ ok: true; updatedMembers: number; mode?: string }>("/api/tiers/recalculate", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function createPurchaseViaApi(input: {
+  memberId: string;
+  email?: string;
+  receiptReference: string;
+  amount: number;
+  date: string;
+  category: string;
+  notes?: string;
+}) {
+  return requestJson<{
+    ok: true;
+    purchase: Record<string, unknown>;
+    award: { pointsAwarded: number; newBalance: number; tier: string };
+    mode?: string;
+  }>("/api/purchases", {
+    method: "POST",
+    body: JSON.stringify(input),
+    idempotencyKey: input.receiptReference,
+  });
+}
+
+export async function loadPurchasesViaApi(memberId: string) {
+  return requestJson<{ ok: true; purchases: Array<Record<string, unknown>> }>(
+    `/api/purchases?memberId=${encodeURIComponent(memberId)}`,
+  );
+}
+
+export async function loadTasksViaApi(memberId: string) {
+  return requestJson<{
+    ok: true;
+    tasks: Array<Record<string, unknown>>;
+    source?: string;
+  }>(`/api/tasks?memberId=${encodeURIComponent(memberId)}`);
+}
+
+export async function startTaskViaApi(taskId: string, input: { memberId: string }) {
+  return requestJson<{ ok: true; taskId: string; memberId: string; status: string }>(
+    `/api/tasks/${encodeURIComponent(taskId)}/start`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function submitTaskViaApi(
+  taskId: string,
+  input: {
+    memberId: string;
+    email?: string;
+    title?: string;
+    description?: string;
+    type?: string;
+    points?: number;
+    requiredFields?: string[];
+    answers: Record<string, string>;
+  },
+) {
+  return requestJson<{
+    ok: true;
+    taskId: string;
+    memberId: string;
+    status: string;
+    award: { pointsAwarded: number; newBalance: number; tier: string };
+  }>(`/api/tasks/${encodeURIComponent(taskId)}/submit`, {
+    method: "POST",
+    body: JSON.stringify(input),
+    idempotencyKey: `task-${taskId}-${input.memberId}`,
+  });
+}
+
+export async function createReferralViaApi(input: {
+  memberId: string;
+  recipientEmail: string;
+  referralLink?: string;
+}) {
+  return requestJson<{
+    ok: true;
+    referral: Record<string, unknown>;
+    mode?: string;
+  }>("/api/referrals", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function loadReferralsViaApi(memberId: string) {
+  return requestJson<{ ok: true; referrals: Array<Record<string, unknown>> }>(
+    `/api/referrals?memberId=${encodeURIComponent(memberId)}`,
+  );
 }
 
 export async function recordPartnerTransactionViaApi(input: {

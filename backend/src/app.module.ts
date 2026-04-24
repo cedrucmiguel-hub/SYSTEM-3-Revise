@@ -11,6 +11,9 @@ import { SegmentsModule } from "./segments/segments.module";
 import { CommunicationsModule } from "./communications/communications.module";
 import { PartnersModule } from "./partners/partners.module";
 import { RewardsModule } from "./rewards/rewards.module";
+import { PurchasesModule } from "./purchases/purchases.module";
+import { TasksModule } from "./tasks/tasks.module";
+import { ReferralsModule } from "./referrals/referrals.module";
 
 @Module({
   imports: [
@@ -26,6 +29,9 @@ import { RewardsModule } from "./rewards/rewards.module";
     CommunicationsModule,
     PartnersModule,
     RewardsModule,
+    PurchasesModule,
+    TasksModule,
+    ReferralsModule,
   ],
 })
 export class AppModule {}

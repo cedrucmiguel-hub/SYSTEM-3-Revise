@@ -1,1 +1,3 @@
-export { redeemPointsHandler as default } from "../../../server/points-api";
+import { createNestProxyHandler } from "../../../server/nest-proxy";
+
+export default createNestProxyHandler("/points/redeem");

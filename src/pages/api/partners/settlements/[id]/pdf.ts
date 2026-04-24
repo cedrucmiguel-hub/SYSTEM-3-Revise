@@ -1,1 +1,6 @@
-export { partnerSettlementPdfHandler as default } from "../../../../../server/partner-api";
+import { createNestProxyHandler } from "../../../../../server/nest-proxy";
+
+export default createNestProxyHandler(
+  (req) => `/partners/settlements/${encodeURIComponent(String(req.query.id || ""))}/pdf`,
+  { binary: true },
+);

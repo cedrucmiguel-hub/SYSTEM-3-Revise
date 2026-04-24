@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Save } from "lucide-react";
-import { fetchActiveEarningRules, fetchTierRules, saveEarningRules, saveTierRules, type EarningRule } from "../../lib/loyalty-supabase";
-import type { TierRule } from "../../lib/loyalty-engine";
+import type { EarningRule } from "../../lib/loyalty-supabase";
+import { normalizeTierLabel, type TierRule } from "../../lib/loyalty-engine";
 import { toast } from "sonner";
+import { loadTierRulesViaApi, recalculateTiersViaApi, saveTierRulesViaApi } from "../../lib/api";
 import {
   DEFAULT_BIRTHDAY_REWARD_SETTINGS,
   loadBirthdayRewardSettings,
@@ -39,18 +40,33 @@ export default function AdminSettingsPage() {
   const [earningRules, setEarningRules] = useState<EarningRule[]>(FALLBACK_EARNING_RULES);
   const [birthdaySettings, setBirthdaySettings] = useState<BirthdayRewardSettings>(DEFAULT_BIRTHDAY_REWARD_SETTINGS);
   const [saving, setSaving] = useState(false);
-  const [pendingOtp, setPendingOtp] = useState<string | null>(null);
-  const [otpInput, setOtpInput] = useState("");
-  const [pendingSave, setPendingSave] = useState(false);
 
   useEffect(() => {
-    fetchTierRules()
-      .then((data) => setRules(data))
-      .catch(() => setRules(FALLBACK_RULES));
-
-    fetchActiveEarningRules()
-      .then((data) => setEarningRules(data))
-      .catch(() => setEarningRules(FALLBACK_EARNING_RULES));
+    loadTierRulesViaApi()
+      .then((data) => {
+        setRules(
+          data.tiers.length > 0
+            ? data.tiers.map((rule) => ({
+                tier_label: rule.tier_label,
+                min_points: Number(rule.min_points || 0),
+              }))
+            : FALLBACK_RULES,
+        );
+        setEarningRules(
+          data.earningRules.length > 0
+            ? data.earningRules.map((rule) => ({
+                tier_label: normalizeTierLabel(rule.tier_label),
+                peso_per_point: Number(rule.peso_per_point || 10),
+                multiplier: Number(rule.multiplier || 1),
+                is_active: rule.is_active !== false,
+              }))
+            : FALLBACK_EARNING_RULES,
+        );
+      })
+      .catch(() => {
+        setRules(FALLBACK_RULES);
+        setEarningRules(FALLBACK_EARNING_RULES);
+      });
 
     setBirthdaySettings(loadBirthdayRewardSettings());
   }, []);
@@ -79,30 +95,40 @@ export default function AdminSettingsPage() {
   };
 
   const handleSave = async () => {
-    if (!pendingSave) {
-      const generatedOtp = `${Math.floor(100000 + Math.random() * 900000)}`;
-      setPendingOtp(generatedOtp);
-      setOtpInput("");
-      setPendingSave(true);
-      toast.info(`OTP sent to your registered channel: ${generatedOtp}`, {
-        description: "Demo mode OTP. Enter this code to confirm settings changes.",
-      });
-      return;
-    }
-
-    if (!pendingOtp || otpInput.trim() !== pendingOtp) {
-      toast.error("Invalid OTP. Please try again.");
-      return;
-    }
-
     try {
       setSaving(true);
-      await Promise.all([saveTierRules(rules), saveEarningRules(earningRules)]);
+      const response = await saveTierRulesViaApi({
+        tiers: rules.map((rule) => ({
+          tier_label: rule.tier_label,
+          min_points: Number(rule.min_points || 0),
+          is_active: true,
+        })),
+        earningRules: earningRules.map((rule) => ({
+          tier_label: rule.tier_label,
+          peso_per_point: Number(rule.peso_per_point || 10),
+          multiplier: Number(rule.multiplier || 1),
+          is_active: rule.is_active !== false,
+        })),
+      });
+      const recalc = await recalculateTiersViaApi();
       saveBirthdayRewardSettings(birthdaySettings);
-      toast.success("Tier and earning rules saved.");
-      setPendingOtp(null);
-      setOtpInput("");
-      setPendingSave(false);
+      setRules(
+        response.tiers.map((rule) => ({
+          tier_label: rule.tier_label,
+          min_points: Number(rule.min_points || 0),
+        })),
+      );
+      setEarningRules(
+        response.earningRules.map((rule) => ({
+          tier_label: normalizeTierLabel(rule.tier_label),
+          peso_per_point: Number(rule.peso_per_point || 10),
+          multiplier: Number(rule.multiplier || 1),
+          is_active: rule.is_active !== false,
+        })),
+      );
+      toast.success("Tier rules saved.", {
+        description: `${recalc.updatedMembers || 0} member records recalculated.`,
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save rules.");
     } finally {
@@ -201,22 +227,11 @@ export default function AdminSettingsPage() {
           className={`${adminPrimaryButtonClass} mt-6 disabled:opacity-70`}
         >
           <Save className="w-4 h-4" />
-          {saving ? "Saving..." : pendingSave ? "Confirm OTP & Save" : "Save Rules"}
+          {saving ? "Saving..." : "Save Tier Rules"}
         </button>
-        {pendingSave ? (
-          <div className={`${adminPanelSoftClass} mt-4`}>
-            <p className="text-sm font-semibold text-gray-700">OTP Confirmation</p>
-            <p className="mt-1 text-xs text-gray-500">Enter the 6-digit OTP shown in the toast to confirm these settings changes.</p>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={otpInput}
-              onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="Enter 6-digit OTP"
-              className={`mt-3 ${adminInputClass}`}
-            />
-          </div>
-        ) : null}
+        <p className="mt-3 text-xs text-gray-500">
+          Saving applies the new thresholds and earning multipliers immediately, then recalculates member tiers in the backend.
+        </p>
       </div>
 
       <div className={adminPanelClass}>

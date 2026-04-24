@@ -108,15 +108,107 @@ export type LocalCommunicationPreferenceRecord = {
   frequency: "daily" | "weekly" | "never";
 };
 
+export type LocalMemberProfileRecord = {
+  id: string;
+  memberId: string;
+  memberNumber: string;
+  name: string;
+  email: string;
+  mobile: string;
+  memberSince: string;
+  tier: string;
+  points: number;
+  lifetimePoints: number;
+  segment: string;
+  status: "Active" | "Inactive";
+  profileImage?: string | null;
+  birthdate?: string | null;
+  address?: string | null;
+  surveysCompleted?: number;
+};
+
+export type LocalPurchaseRecord = {
+  id: string;
+  memberId: string;
+  receiptReference: string;
+  amount: number;
+  date: string;
+  category: string;
+  notes: string | null;
+  pointsAwarded: number;
+  createdAt: string;
+};
+
+export type LocalTaskRecord = {
+  id: string;
+  title: string;
+  description: string;
+  type: "survey" | "task";
+  status: "available" | "inactive";
+  points: number;
+  oncePerMember: boolean;
+  requiredFields: string[];
+};
+
+export type LocalTaskProgressRecord = {
+  taskId: string;
+  memberId: string;
+  status: "available" | "in_progress" | "completed" | "already_claimed";
+  startedAt?: string | null;
+  submittedAt?: string | null;
+  answers?: Record<string, string>;
+};
+
+export type LocalReferralRecord = {
+  id: string;
+  memberId: string;
+  referralCode: string;
+  recipientEmail: string;
+  referralLink: string;
+  status: "pending" | "joined" | "duplicate";
+  createdAt: string;
+};
+
+export type LocalTierRuleRecord = {
+  tier_label: string;
+  min_points: number;
+  is_active: boolean;
+};
+
+export type LocalEarningRuleRecord = {
+  tier_label: string;
+  peso_per_point: number;
+  multiplier: number;
+  is_active: boolean;
+};
+
+export type LocalRewardRecord = {
+  id: string;
+  reward_id: string;
+  name: string;
+  description: string;
+  points_cost: number;
+  category: string;
+  is_active: boolean;
+};
+
 type ApiState = {
   idempotency: Record<string, StoredIdempotentResponse>;
   partnerTransactions: PartnerTransactionRecord[];
   partnerSettlements: PartnerSettlementRecord[];
   pointMembers: Record<string, LocalPointMemberRecord>;
+  members: Record<string, LocalMemberProfileRecord>;
   campaigns: Record<string, LocalCampaignRecord>;
   segments: Record<string, LocalSegmentRecord>;
   notifications: LocalNotificationRecord[];
   communicationPreferences: Record<string, LocalCommunicationPreferenceRecord>;
+  purchases: LocalPurchaseRecord[];
+  tasks: LocalTaskRecord[];
+  taskProgress: LocalTaskProgressRecord[];
+  referrals: LocalReferralRecord[];
+  tierRules: LocalTierRuleRecord[];
+  earningRules: LocalEarningRuleRecord[];
+  rewards: LocalRewardRecord[];
 };
 
 const STORE_DIR = path.join(process.cwd(), ".runtime");
@@ -127,10 +219,138 @@ const DEFAULT_STATE: ApiState = {
   partnerTransactions: [],
   partnerSettlements: [],
   pointMembers: {},
+  members: {
+    "MEM-000011": {
+      id: "MEM-000011",
+      memberId: "MEM-000011",
+      memberNumber: "MEM-000011",
+      name: "Sound Wave",
+      email: "soundwave@example.com",
+      mobile: "+639195555786",
+      memberSince: "2026-04-01T00:00:00.000Z",
+      tier: "Silver",
+      points: 625,
+      lifetimePoints: 625,
+      segment: "High Value",
+      status: "Active",
+      surveysCompleted: 0,
+    },
+    "MEM-000008": {
+      id: "MEM-000008",
+      memberId: "MEM-000008",
+      memberNumber: "MEM-000008",
+      name: "Test Three",
+      email: "test3@gmail.com",
+      mobile: "+639123412312",
+      memberSince: "2026-04-03T00:00:00.000Z",
+      tier: "Bronze",
+      points: 200,
+      lifetimePoints: 200,
+      segment: "Active",
+      status: "Active",
+      surveysCompleted: 0,
+    },
+    "MEM-000007": {
+      id: "MEM-000007",
+      memberId: "MEM-000007",
+      memberNumber: "MEM-000007",
+      name: "Test Two",
+      email: "test2@gmail.com",
+      mobile: "+639123123123",
+      memberSince: "2026-04-02T00:00:00.000Z",
+      tier: "Silver",
+      points: 300,
+      lifetimePoints: 300,
+      segment: "Active",
+      status: "Active",
+      surveysCompleted: 0,
+    },
+    "MEM-000009": {
+      id: "MEM-000009",
+      memberId: "MEM-000009",
+      memberNumber: "MEM-000009",
+      name: "Test Four",
+      email: "test4@gmail.com",
+      mobile: "+639123123124",
+      memberSince: "2026-04-04T00:00:00.000Z",
+      tier: "Silver",
+      points: 605,
+      lifetimePoints: 605,
+      segment: "Active",
+      status: "Active",
+      surveysCompleted: 0,
+    },
+  },
   campaigns: {},
   segments: {},
   notifications: [],
   communicationPreferences: {},
+  purchases: [],
+  tasks: [
+    {
+      id: "survey-feedback",
+      title: "Customer Experience Survey",
+      description: "Answer the quick survey to unlock bonus points.",
+      type: "survey",
+      status: "available",
+      points: 50,
+      oncePerMember: true,
+      requiredFields: ["rating", "feedback"],
+    },
+    {
+      id: "app-profile-check",
+      title: "Profile Review",
+      description: "Review your profile details once per member account.",
+      type: "task",
+      status: "available",
+      points: 25,
+      oncePerMember: true,
+      requiredFields: ["confirmation"],
+    },
+  ],
+  taskProgress: [],
+  referrals: [],
+  tierRules: [
+    { tier_label: "Platinum", min_points: 1500, is_active: true },
+    { tier_label: "Gold", min_points: 750, is_active: true },
+    { tier_label: "Silver", min_points: 250, is_active: true },
+    { tier_label: "Bronze", min_points: 0, is_active: true },
+  ],
+  earningRules: [
+    { tier_label: "Bronze", peso_per_point: 10, multiplier: 1, is_active: true },
+    { tier_label: "Silver", peso_per_point: 10, multiplier: 1.25, is_active: true },
+    { tier_label: "Gold", peso_per_point: 10, multiplier: 1.5, is_active: true },
+    { tier_label: "Platinum", peso_per_point: 10, multiplier: 2, is_active: true },
+  ],
+  rewards: [
+    {
+      id: "REWARD-001",
+      reward_id: "REWARD-001",
+      name: "Free Pastry",
+      description: "Choose from croissant, muffin, or danish.",
+      points_cost: 150,
+      category: "food",
+      is_active: true,
+    },
+    {
+      id: "REWARD-002",
+      reward_id: "REWARD-002",
+      name: "Free Regular Coffee",
+      description: "Any regular-sized hot or iced coffee.",
+      points_cost: 120,
+      category: "beverage",
+      is_active: true,
+    },
+    {
+      id: "REWARD-003",
+      reward_id: "REWARD-003",
+      name: "Free Large Specialty Drink",
+      description: "Any large-sized specialty beverage.",
+      points_cost: 280,
+      category: "beverage",
+      is_active: true,
+    },
+  ],
 };
 
 let stateCache: ApiState | null = null;
@@ -175,10 +395,18 @@ export async function readApiState(): Promise<ApiState> {
         paidAt: settlement.paidAt ?? null,
       })),
       pointMembers: parsed.pointMembers ?? {},
+      members: parsed.members ?? DEFAULT_STATE.members,
       campaigns: parsed.campaigns ?? {},
       segments: parsed.segments ?? {},
       notifications: parsed.notifications ?? [],
       communicationPreferences: parsed.communicationPreferences ?? {},
+      purchases: parsed.purchases ?? [],
+      tasks: parsed.tasks ?? DEFAULT_STATE.tasks,
+      taskProgress: parsed.taskProgress ?? [],
+      referrals: parsed.referrals ?? [],
+      tierRules: parsed.tierRules ?? DEFAULT_STATE.tierRules,
+      earningRules: parsed.earningRules ?? DEFAULT_STATE.earningRules,
+      rewards: parsed.rewards ?? DEFAULT_STATE.rewards,
     };
     return stateCache;
   } catch {
@@ -187,10 +415,18 @@ export async function readApiState(): Promise<ApiState> {
       partnerTransactions: [],
       partnerSettlements: [],
       pointMembers: {},
+      members: DEFAULT_STATE.members,
       campaigns: {},
       segments: {},
       notifications: [],
       communicationPreferences: {},
+      purchases: [],
+      tasks: DEFAULT_STATE.tasks,
+      taskProgress: [],
+      referrals: [],
+      tierRules: DEFAULT_STATE.tierRules,
+      earningRules: DEFAULT_STATE.earningRules,
+      rewards: DEFAULT_STATE.rewards,
     };
     return stateCache;
   }

@@ -1,1 +1,3 @@
-export { unsubscribeHandler as default } from "../../server/communication-api";
+import { createNestProxyHandler } from "../../server/nest-proxy";
+
+export default createNestProxyHandler("/unsubscribe");

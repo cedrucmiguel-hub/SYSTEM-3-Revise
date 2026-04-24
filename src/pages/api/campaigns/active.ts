@@ -1,1 +1,3 @@
-export { activeCampaignsHandler as default } from "../../../server/campaign-api";
+import { createNestProxyHandler } from "../../../server/nest-proxy";
+
+export default createNestProxyHandler("/campaigns/active");
