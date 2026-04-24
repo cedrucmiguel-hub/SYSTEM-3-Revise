@@ -80,6 +80,47 @@ const LOCAL_EARN_TASK_FALLBACK: EarnOpportunity[] = [
   },
 ];
 
+const LOYALTY_READ_CACHE_TTL_MS = 20_000;
+const loyaltyReadCache = new Map<string, { loadedAt: number; value: unknown }>();
+const loyaltyReadInFlight = new Map<string, Promise<unknown>>();
+
+async function withLoyaltyReadCache<T>(key: string, loader: () => Promise<T>): Promise<T> {
+  const cached = loyaltyReadCache.get(key);
+  if (cached && Date.now() - cached.loadedAt < LOYALTY_READ_CACHE_TTL_MS) {
+    return cached.value as T;
+  }
+
+  const inFlight = loyaltyReadInFlight.get(key);
+  if (inFlight) return inFlight as Promise<T>;
+
+  const request = loader()
+    .then((value) => {
+      loyaltyReadCache.set(key, { loadedAt: Date.now(), value });
+      return value;
+    })
+    .finally(() => {
+      loyaltyReadInFlight.delete(key);
+    });
+
+  loyaltyReadInFlight.set(key, request);
+  return request;
+}
+
+function clearLoyaltyReadCache(prefix?: string) {
+  if (!prefix) {
+    loyaltyReadCache.clear();
+    loyaltyReadInFlight.clear();
+    return;
+  }
+
+  for (const key of Array.from(loyaltyReadCache.keys())) {
+    if (key.startsWith(prefix)) loyaltyReadCache.delete(key);
+  }
+  for (const key of Array.from(loyaltyReadInFlight.keys())) {
+    if (key.startsWith(prefix)) loyaltyReadInFlight.delete(key);
+  }
+}
+
 function useClientLocalFallback() {
   return (
     typeof window !== "undefined" &&
@@ -431,11 +472,13 @@ export async function processAllMemberExpiredPoints() {
 
 export async function fetchTierRules(): Promise<TierRule[]> {
   if (useClientLocalFallback()) return DEFAULT_TIER_RULES;
-  const response = await fetchTierRulesViaService().catch(() => null);
-  if (response?.ok && Array.isArray(response.tiers)) {
-    return normalizeTierRules(response.tiers as TierRule[]);
-  }
-  return DEFAULT_TIER_RULES;
+  return withLoyaltyReadCache("tiers:rules", async () => {
+    const response = await fetchTierRulesViaService().catch(() => null);
+    if (response?.ok && Array.isArray(response.tiers)) {
+      return normalizeTierRules(response.tiers as TierRule[]);
+    }
+    return DEFAULT_TIER_RULES;
+  });
 }
 
 export async function saveTierRules(rules: TierRule[]): Promise<void> {
@@ -449,40 +492,43 @@ export async function saveTierRules(rules: TierRule[]): Promise<void> {
       })),
       { onConflict: "tier_label" }
     );
+  clearLoyaltyReadCache("tiers:");
 }
 
 
 export async function fetchActiveEarningRules(): Promise<EarningRule[]> {
   if (useClientLocalFallback()) return LOCAL_EARNING_RULES;
-  const { data, error } = await supabase
-    .from("earning_rules")
-    .select("tier_label,peso_per_point,multiplier,is_active,effective_at")
-    .eq("is_active", true)
-    .order("effective_at", { ascending: false });
+  return withLoyaltyReadCache("earning-rules:active", async () => {
+    const { data, error } = await supabase
+      .from("earning_rules")
+      .select("tier_label,peso_per_point,multiplier,is_active,effective_at")
+      .eq("is_active", true)
+      .order("effective_at", { ascending: false });
 
-  if (error || !data || data.length === 0) {
-    return [
-      { tier_label: "Bronze", peso_per_point: 10, multiplier: 1, is_active: true },
-      { tier_label: "Silver", peso_per_point: 10, multiplier: 1.25, is_active: true },
-      { tier_label: "Gold", peso_per_point: 10, multiplier: 1.5, is_active: true },
-    ];
-  }
+    if (error || !data || data.length === 0) {
+      return [
+        { tier_label: "Bronze", peso_per_point: 10, multiplier: 1, is_active: true },
+        { tier_label: "Silver", peso_per_point: 10, multiplier: 1.25, is_active: true },
+        { tier_label: "Gold", peso_per_point: 10, multiplier: 1.5, is_active: true },
+      ];
+    }
 
-  const latestByTier = new Map<SupportedTier, EarningRule>();
-  for (const row of data as AnyRecord[]) {
-    const tier = normalizeTierLabel(String(row.tier_label)) as SupportedTier;
-    if (latestByTier.has(tier)) continue;
-    latestByTier.set(tier, {
-      tier_label: tier,
-      peso_per_point: Number(row.peso_per_point || 10),
-      multiplier: Number(row.multiplier || 1),
-      is_active: Boolean(row.is_active ?? true),
-    });
-  }
+    const latestByTier = new Map<SupportedTier, EarningRule>();
+    for (const row of data as AnyRecord[]) {
+      const tier = normalizeTierLabel(String(row.tier_label)) as SupportedTier;
+      if (latestByTier.has(tier)) continue;
+      latestByTier.set(tier, {
+        tier_label: tier,
+        peso_per_point: Number(row.peso_per_point || 10),
+        multiplier: Number(row.multiplier || 1),
+        is_active: Boolean(row.is_active ?? true),
+      });
+    }
 
-  return (["Bronze", "Silver", "Gold"] as SupportedTier[]).map((tier) =>
-    latestByTier.get(tier) || { tier_label: tier, peso_per_point: 10, multiplier: 1, is_active: true }
-  );
+    return (["Bronze", "Silver", "Gold"] as SupportedTier[]).map((tier) =>
+      latestByTier.get(tier) || { tier_label: tier, peso_per_point: 10, multiplier: 1, is_active: true }
+    );
+  });
 }
 
 export async function saveEarningRules(rules: EarningRule[]): Promise<void> {
@@ -507,29 +553,19 @@ export async function saveEarningRules(rules: EarningRule[]): Promise<void> {
     });
     if (insertError) throw insertError;
   }
+  clearLoyaltyReadCache("earning-rules:");
 }
 
 async function fetchEarningRuleForTier(tier: SupportedTier): Promise<EarningRule> {
-  const { data, error } = await supabase
-    .from("earning_rules")
-    .select("tier_label,peso_per_point,multiplier,is_active")
-    .eq("tier_label", tier)
-    .eq("is_active", true)
-    .order("effective_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw error;
-  if (!data) {
-    return { tier_label: tier, peso_per_point: 10, multiplier: 1, is_active: true };
-  }
-
-  return {
-    tier_label: normalizeTierLabel(String(data.tier_label)) as SupportedTier,
-    peso_per_point: Number(data.peso_per_point || 10),
-    multiplier: Number(data.multiplier || 1),
-    is_active: Boolean(data.is_active ?? true),
-  };
+  const rules = await fetchActiveEarningRules();
+  return (
+    rules.find((rule) => normalizeTierLabel(rule.tier_label) === tier) || {
+      tier_label: tier,
+      peso_per_point: 10,
+      multiplier: 1,
+      is_active: true,
+    }
+  );
 }
 
 export async function calculateDynamicPurchasePoints(input: {
@@ -634,123 +670,129 @@ async function loadActiveFlashSaleCampaignForReward(rewardCatalogId: string | nu
 
 export async function loadRewardsCatalog(): Promise<Reward[]> {
   if (useClientLocalFallback()) return LOCAL_REWARD_FALLBACK;
-
-  let rewardRows: AnyRecord[] = [];
-  const rewardsWithPartner = await supabase
-    .from("rewards_catalog")
-    .select("*, reward_partners(id,partner_code,partner_name,logo_url,conversion_rate,is_active)")
-    .eq("is_active", true)
-    .order("points_cost", { ascending: true });
-
-  if (!rewardsWithPartner.error && rewardsWithPartner.data) {
-    rewardRows = rewardsWithPartner.data as AnyRecord[];
-  } else {
-    const fallback = await supabase
+  return withLoyaltyReadCache("rewards:catalog", async () => {
+    let rewardRows: AnyRecord[] = [];
+    const rewardsWithPartner = await supabase
       .from("rewards_catalog")
-      .select("*")
+      .select("*, reward_partners(id,partner_code,partner_name,logo_url,conversion_rate,is_active)")
       .eq("is_active", true)
       .order("points_cost", { ascending: true });
 
-    if (fallback.error || !fallback.data) return [];
-    rewardRows = fallback.data as AnyRecord[];
-  }
+    if (!rewardsWithPartner.error && rewardsWithPartner.data) {
+      rewardRows = rewardsWithPartner.data as AnyRecord[];
+    } else {
+      const fallback = await supabase
+        .from("rewards_catalog")
+        .select("*")
+        .eq("is_active", true)
+        .order("points_cost", { ascending: true });
 
-  const flashSalesRes = await supabase
-    .from("promotion_campaigns")
-    .select("id,reward_id,flash_sale_quantity_limit,flash_sale_claimed_count,starts_at,ends_at,countdown_label,banner_title,banner_message,status")
-    .eq("campaign_type", "flash_sale")
-    .neq("status", "archived");
+      if (fallback.error || !fallback.data) return [];
+      rewardRows = fallback.data as AnyRecord[];
+    }
 
-  const flashSaleByReward = new Map<string, AnyRecord>();
-  if (!flashSalesRes.error) {
-    const now = Date.now();
-    for (const row of (flashSalesRes.data || []) as AnyRecord[]) {
-      if (row.reward_id === undefined || row.reward_id === null) continue;
+    const flashSalesRes = await supabase
+      .from("promotion_campaigns")
+      .select("id,reward_id,flash_sale_quantity_limit,flash_sale_claimed_count,starts_at,ends_at,countdown_label,banner_title,banner_message,status")
+      .eq("campaign_type", "flash_sale")
+      .neq("status", "archived");
 
-      const rewardId = String(row.reward_id);
-      const startsAt = new Date(String(row.starts_at ?? "")).getTime();
-      const endsAt = new Date(String(row.ends_at ?? "")).getTime();
-      const nextRowPriority = startsAt <= now && endsAt >= now ? 2 : startsAt > now ? 1 : 0;
-      const existing = flashSaleByReward.get(rewardId);
+    const flashSaleByReward = new Map<string, AnyRecord>();
+    if (!flashSalesRes.error) {
+      const now = Date.now();
+      for (const row of (flashSalesRes.data || []) as AnyRecord[]) {
+        if (row.reward_id === undefined || row.reward_id === null) continue;
 
-      if (!existing) {
-        flashSaleByReward.set(rewardId, row);
-        continue;
-      }
+        const rewardId = String(row.reward_id);
+        const startsAt = new Date(String(row.starts_at ?? "")).getTime();
+        const endsAt = new Date(String(row.ends_at ?? "")).getTime();
+        const nextRowPriority = startsAt <= now && endsAt >= now ? 2 : startsAt > now ? 1 : 0;
+        const existing = flashSaleByReward.get(rewardId);
 
-      const existingStartsAt = new Date(String(existing.starts_at ?? "")).getTime();
-      const existingEndsAt = new Date(String(existing.ends_at ?? "")).getTime();
-      const existingPriority =
-        existingStartsAt <= now && existingEndsAt >= now ? 2 : existingStartsAt > now ? 1 : 0;
+        if (!existing) {
+          flashSaleByReward.set(rewardId, row);
+          continue;
+        }
 
-      const shouldReplace =
-        nextRowPriority > existingPriority ||
-        (nextRowPriority === existingPriority && endsAt > existingEndsAt);
+        const existingStartsAt = new Date(String(existing.starts_at ?? "")).getTime();
+        const existingEndsAt = new Date(String(existing.ends_at ?? "")).getTime();
+        const existingPriority =
+          existingStartsAt <= now && existingEndsAt >= now ? 2 : existingStartsAt > now ? 1 : 0;
 
-      if (shouldReplace) {
-        flashSaleByReward.set(rewardId, row);
+        const shouldReplace =
+          nextRowPriority > existingPriority ||
+          (nextRowPriority === existingPriority && endsAt > existingEndsAt);
+
+        if (shouldReplace) {
+          flashSaleByReward.set(rewardId, row);
+        }
       }
     }
-  }
 
-  return rewardRows.map((row) => {
-    const partner = row.reward_partners as AnyRecord | null;
-    const rewardCatalogId = row.id ?? null;
-    const flashSale = rewardCatalogId ? flashSaleByReward.get(String(rewardCatalogId)) : null;
+    return rewardRows.map((row) => {
+      const partner = row.reward_partners as AnyRecord | null;
+      const rewardCatalogId = row.id ?? null;
+      const flashSale = rewardCatalogId ? flashSaleByReward.get(String(rewardCatalogId)) : null;
 
-    return {
-      id: String(row.reward_id ?? row.id ?? ""),
-      rewardCatalogId: rewardCatalogId ? String(rewardCatalogId) : undefined,
-      name: String(row.name ?? "Reward"),
-      description: String(row.description ?? ""),
-      pointsCost: Number(row.points_cost ?? 0),
-      category: String(row.category ?? "voucher") as Reward["category"],
-      imageUrl: row.image_url ? String(row.image_url) : undefined,
-      available: Boolean(row.is_active ?? true),
-      expiryDate: row.expiry_date ? String(row.expiry_date) : undefined,
-      partnerId: partner?.id ? String(partner.id) : row.partner_id ? String(row.partner_id) : null,
-      partnerName: partner?.partner_name ? String(partner.partner_name) : null,
-      partnerCode: partner?.partner_code ? String(partner.partner_code) : null,
-      partnerLogoUrl: partner?.logo_url ? String(partner.logo_url) : null,
-      partnerConversionRate:
-        partner?.conversion_rate !== undefined && partner?.conversion_rate !== null
-          ? Number(partner.conversion_rate)
-          : null,
-      cashValue: row.cash_value !== undefined && row.cash_value !== null ? Number(row.cash_value) : null,
-      activeFlashSaleId: flashSale?.id ? String(flashSale.id) : null,
-      flashSaleStartsAt: flashSale?.starts_at ? String(flashSale.starts_at) : null,
-      flashSaleEndsAt: flashSale?.ends_at ? String(flashSale.ends_at) : null,
-      flashSaleQuantityLimit:
-        flashSale?.flash_sale_quantity_limit !== undefined && flashSale?.flash_sale_quantity_limit !== null
-          ? Number(flashSale.flash_sale_quantity_limit)
-          : null,
-      flashSaleClaimedCount: Number(flashSale?.flash_sale_claimed_count ?? 0),
-      flashSaleBanner: flashSale?.banner_title ? String(flashSale.banner_title) : flashSale?.banner_message ? String(flashSale.banner_message) : null,
-      flashSaleCountdownLabel: flashSale?.countdown_label ? String(flashSale.countdown_label) : null,
-    } satisfies Reward;
+      return {
+        id: String(row.reward_id ?? row.id ?? ""),
+        rewardCatalogId: rewardCatalogId ? String(rewardCatalogId) : undefined,
+        name: String(row.name ?? "Reward"),
+        description: String(row.description ?? ""),
+        pointsCost: Number(row.points_cost ?? 0),
+        category: String(row.category ?? "voucher") as Reward["category"],
+        imageUrl: row.image_url ? String(row.image_url) : undefined,
+        available: Boolean(row.is_active ?? true),
+        expiryDate: row.expiry_date ? String(row.expiry_date) : undefined,
+        partnerId: partner?.id ? String(partner.id) : row.partner_id ? String(row.partner_id) : null,
+        partnerName: partner?.partner_name ? String(partner.partner_name) : null,
+        partnerCode: partner?.partner_code ? String(partner.partner_code) : null,
+        partnerLogoUrl: partner?.logo_url ? String(partner.logo_url) : null,
+        partnerConversionRate:
+          partner?.conversion_rate !== undefined && partner?.conversion_rate !== null
+            ? Number(partner.conversion_rate)
+            : null,
+        cashValue: row.cash_value !== undefined && row.cash_value !== null ? Number(row.cash_value) : null,
+        activeFlashSaleId: flashSale?.id ? String(flashSale.id) : null,
+        flashSaleStartsAt: flashSale?.starts_at ? String(flashSale.starts_at) : null,
+        flashSaleEndsAt: flashSale?.ends_at ? String(flashSale.ends_at) : null,
+        flashSaleQuantityLimit:
+          flashSale?.flash_sale_quantity_limit !== undefined && flashSale?.flash_sale_quantity_limit !== null
+            ? Number(flashSale.flash_sale_quantity_limit)
+            : null,
+        flashSaleClaimedCount: Number(flashSale?.flash_sale_claimed_count ?? 0),
+        flashSaleBanner: flashSale?.banner_title
+          ? String(flashSale.banner_title)
+          : flashSale?.banner_message
+            ? String(flashSale.banner_message)
+            : null,
+        flashSaleCountdownLabel: flashSale?.countdown_label ? String(flashSale.countdown_label) : null,
+      } satisfies Reward;
+    });
   });
 }
 
 export async function loadEarnTasks(): Promise<EarnOpportunity[]> {
   if (useClientLocalFallback()) return LOCAL_EARN_TASK_FALLBACK;
+  return withLoyaltyReadCache("earn-tasks:active", async () => {
+    const { data, error } = await supabase
+      .from("earn_tasks")
+      .select("*")
+      .eq("is_active", true)
+      .order("points", { ascending: false });
 
-  const { data, error } = await supabase
-    .from("earn_tasks")
-    .select("*")
-    .eq("is_active", true)
-    .order("points", { ascending: false });
+    if (error || !data) return [];
 
-  if (error || !data) return [];
-
-  return (data as AnyRecord[]).map((row) => ({
-    id: String(row.task_code ?? row.id ?? ""),
-    title: String(row.title ?? "Task"),
-    description: String(row.description ?? ""),
-    points: Number(row.points ?? 0),
-    icon: String(row.icon_key ?? "user"),
-    completed: Boolean(row.default_completed ?? false),
-    active: Boolean(row.is_active ?? true),
-  }));
+    return (data as AnyRecord[]).map((row) => ({
+      id: String(row.task_code ?? row.id ?? ""),
+      title: String(row.title ?? "Task"),
+      description: String(row.description ?? ""),
+      points: Number(row.points ?? 0),
+      icon: String(row.icon_key ?? "user"),
+      completed: Boolean(row.default_completed ?? false),
+      active: Boolean(row.is_active ?? true),
+    }));
+  });
 }
 
 export async function ensureWelcomePackage(memberIdentifier: string, fallbackEmail?: string) {
@@ -1051,6 +1093,7 @@ export async function redeemMemberPoints(input: {
     idempotencyKey || `redeem-${input.memberIdentifier}-${input.transactionType ?? "REDEEM"}-${input.reason}-${input.points}`
   );
   if (!serviceResponse?.ok) throw new Error("Points service redeem failed.");
+  clearLoyaltyReadCache("rewards:");
   return serviceResponse.result;
 }
 

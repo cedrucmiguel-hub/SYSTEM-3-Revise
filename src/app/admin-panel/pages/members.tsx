@@ -65,7 +65,7 @@ function formatBuilderChip(field: string, operator: string, value: string) {
 }
 
 export default function AdminMembersPage() {
-  const { members, transactions, loading, error, refetch } = useAdminData();
+  const { members, transactions, loading, error, refetch } = useAdminData({ scope: "members" });
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [awardingMember, setAwardingMember] = useState<string | null>(null);

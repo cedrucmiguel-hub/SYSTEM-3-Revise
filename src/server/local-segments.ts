@@ -1,4 +1,4 @@
-import { updateApiState, type LocalSegmentRecord } from "./local-store";
+import { updateApiState, withApiState, type LocalSegmentRecord } from "./local-store";
 import type { SegmentPreviewCondition } from "./segment-preview";
 
 function hasUnresolvedVariable(value: unknown) {
@@ -18,7 +18,7 @@ function generatedSegmentId(name: string) {
 function cleanLocalSegmentName(name: string) {
   const trimmed = String(name || "").trim().replace(/\s+/g, " ");
   const systemSegmentCandidate = trimmed
-    .replace(/^(postman|qa|gateway)\s+/i, "")
+    .replace(/^(?:(?:postman|qa|gateway)\s+)+/i, "")
     .replace(/\s+local$/i, "")
     .trim();
 
@@ -27,7 +27,19 @@ function cleanLocalSegmentName(name: string) {
   if (/^at\s+risk$/i.test(systemSegmentCandidate)) return "At Risk";
   if (/^inactive$/i.test(systemSegmentCandidate)) return "Inactive";
 
-  return trimmed || "Segment";
+  return systemSegmentCandidate || "Segment";
+}
+
+function cleanLocalSegmentDescription(description?: string | null) {
+  const trimmed = String(description || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!trimmed) return null;
+  if (/postman-created segment/i.test(trimmed)) return "Created from API.";
+  if (/created by local verification/i.test(trimmed)) return "Created locally.";
+  if (/created by local .*qa/i.test(trimmed)) return "Created locally.";
+  if (/created from gateway/i.test(trimmed)) return "Created from API.";
+  return trimmed;
 }
 
 export async function saveLocalSegment(input: {
@@ -50,7 +62,7 @@ export async function saveLocalSegment(input: {
     const segment: LocalSegmentRecord = {
       id,
       name: cleanName,
-      description: input.description?.trim() || null,
+      description: cleanLocalSegmentDescription(input.description),
       is_system: false,
       created_at: existing?.created_at || now,
       updated_at: now,
@@ -64,20 +76,21 @@ export async function saveLocalSegment(input: {
 }
 
 export async function listLocalSegments() {
-  return updateApiState((state) => {
+  return withApiState((state) => {
     const byName = new Map<string, LocalSegmentRecord>();
     for (const segment of Object.values(state.segments)) {
       if (hasUnresolvedVariable(segment.id)) continue;
       const name = cleanLocalSegmentName(segment.name);
       const key = name.toLowerCase();
       const existing = byName.get(key);
-      const normalized = { ...segment, name };
+      const normalized = { ...segment, name, description: cleanLocalSegmentDescription(segment.description) };
       if (!existing) {
         byName.set(key, normalized);
         continue;
       }
       byName.set(key, {
         ...existing,
+        description: existing.description ?? normalized.description ?? null,
         updated_at: existing.updated_at > normalized.updated_at ? existing.updated_at : normalized.updated_at,
         memberIds: Array.from(new Set([...(existing.memberIds || []), ...(normalized.memberIds || [])])),
       });

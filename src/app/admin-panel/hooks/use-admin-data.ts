@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../utils/supabase/client";
+import { requestJson } from "../../lib/api";
 import type {
   AdminMetrics,
   LoyaltyTransaction,
@@ -93,7 +94,20 @@ type LocalRuntimePointMember = {
   history: LocalRuntimePointTransaction[];
 };
 
-let adminDataCache: { snapshot: AdminDataSnapshot; loadedAt: number } | null = null;
+type AdminDataScope = "all" | "dashboard" | "members" | "activity" | "rewards" | "engagement" | "analytics";
+
+type AdminDataRequirements = {
+  memberSegments: boolean;
+  tierHistory: boolean;
+  pointsLots: boolean;
+  rewardsCatalog: boolean;
+  loginActivity: boolean;
+  reengagementActions: boolean;
+  earningRules: boolean;
+  redemptionSettings: boolean;
+};
+
+const adminDataCache = new Map<string, { snapshot: AdminDataSnapshot; loadedAt: number }>();
 let expiryProcessedAt = 0;
 
 function transactionLabel(tx: LoyaltyTransaction) {
@@ -140,15 +154,101 @@ function useLocalDemoDataMode() {
 
 async function loadLocalRuntimePointMembers() {
   try {
-    const response = await fetch("/api/local-runtime/points", { cache: "no-store" });
-    if (!response.ok) return [];
-    const payload = (await response.json()) as {
+    const payload = await requestJson<{
       ok?: boolean;
       snapshot?: { members?: LocalRuntimePointMember[] };
-    };
+    }>("/api/local-runtime/points");
     return payload.snapshot?.members || [];
   } catch {
     return [];
+  }
+}
+
+function adminCacheKey(scope: AdminDataScope, includeInsights: boolean, localDemoMode: boolean) {
+  return `${scope}:${includeInsights ? "insights" : "base"}:${localDemoMode ? "local" : "remote"}`;
+}
+
+function resolveRequirements(scope: AdminDataScope, includeInsights: boolean): AdminDataRequirements {
+  if (includeInsights || scope === "analytics") {
+    return {
+      memberSegments: true,
+      tierHistory: true,
+      pointsLots: true,
+      rewardsCatalog: true,
+      loginActivity: true,
+      reengagementActions: true,
+      earningRules: true,
+      redemptionSettings: true,
+    };
+  }
+
+  switch (scope) {
+    case "dashboard":
+      return {
+        memberSegments: true,
+        tierHistory: false,
+        pointsLots: false,
+        rewardsCatalog: false,
+        loginActivity: false,
+        reengagementActions: false,
+        earningRules: false,
+        redemptionSettings: false,
+      };
+    case "members":
+      return {
+        memberSegments: true,
+        tierHistory: false,
+        pointsLots: false,
+        rewardsCatalog: false,
+        loginActivity: false,
+        reengagementActions: false,
+        earningRules: false,
+        redemptionSettings: false,
+      };
+    case "activity":
+      return {
+        memberSegments: false,
+        tierHistory: false,
+        pointsLots: false,
+        rewardsCatalog: false,
+        loginActivity: false,
+        reengagementActions: false,
+        earningRules: false,
+        redemptionSettings: false,
+      };
+    case "rewards":
+      return {
+        memberSegments: false,
+        tierHistory: false,
+        pointsLots: false,
+        rewardsCatalog: true,
+        loginActivity: false,
+        reengagementActions: false,
+        earningRules: false,
+        redemptionSettings: false,
+      };
+    case "engagement":
+      return {
+        memberSegments: false,
+        tierHistory: false,
+        pointsLots: false,
+        rewardsCatalog: false,
+        loginActivity: true,
+        reengagementActions: true,
+        earningRules: false,
+        redemptionSettings: false,
+      };
+    default:
+      return {
+        memberSegments: true,
+        tierHistory: true,
+        pointsLots: true,
+        rewardsCatalog: true,
+        loginActivity: true,
+        reengagementActions: true,
+        earningRules: true,
+        redemptionSettings: true,
+      };
   }
 }
 
@@ -287,8 +387,9 @@ function isMissingColumnError(error: unknown, table: string, column: string) {
   );
 }
 
-export function useAdminData(options?: { includeInsights?: boolean }) {
+export function useAdminData(options?: { includeInsights?: boolean; scope?: AdminDataScope }) {
   const includeInsights = options?.includeInsights ?? false;
+  const scope = options?.scope ?? "all";
   const [members, setMembers] = useState<Member[]>([]);
   const [redemptions, setRedemptions] = useState<LoyaltyTransaction[]>([]);
   const [transactions, setTransactions] = useState<LoyaltyTransaction[]>([]);
@@ -320,8 +421,12 @@ export function useAdminData(options?: { includeInsights?: boolean }) {
   const fetchData = useCallback(async (options?: { force?: boolean }) => {
     try {
       const now = Date.now();
-      if (!options?.force && adminDataCache && now - adminDataCache.loadedAt < ADMIN_CACHE_TTL_MS) {
-        applySnapshot(adminDataCache.snapshot);
+      const localDemoMode = useLocalDemoDataMode();
+      const cacheKey = adminCacheKey(scope, includeInsights, localDemoMode);
+      const requirements = resolveRequirements(scope, includeInsights);
+      const cached = adminDataCache.get(cacheKey);
+      if (!options?.force && cached && now - cached.loadedAt < ADMIN_CACHE_TTL_MS) {
+        applySnapshot(cached.snapshot);
         setLoading(false);
         setError(null);
         return;
@@ -330,7 +435,7 @@ export function useAdminData(options?: { includeInsights?: boolean }) {
       setLoading(true);
       setError(null);
 
-      if (useLocalDemoDataMode()) {
+      if (localDemoMode) {
         const localRuntimePointMembers = await loadLocalRuntimePointMembers();
         const localOverlay = overlayLocalRuntimePoints([], [], localRuntimePointMembers);
         const nextTransactions = localOverlay.transactions;
@@ -347,7 +452,7 @@ export function useAdminData(options?: { includeInsights?: boolean }) {
           earningRules: DEFAULT_EARNING_RULES,
           redemptionValuePerPoint: 0.01,
         };
-        adminDataCache = { snapshot, loadedAt: Date.now() };
+        adminDataCache.set(cacheKey, { snapshot, loadedAt: Date.now() });
         applySnapshot(snapshot);
         return;
       }
@@ -378,38 +483,52 @@ export function useAdminData(options?: { includeInsights?: boolean }) {
           .select("*")
           .order("enrollment_date", { ascending: false })
           .limit(MEMBER_LIMIT),
-        supabase.rpc("loyalty_member_segments"),
+        requirements.memberSegments
+          ? supabase.rpc("loyalty_member_segments")
+          : Promise.resolve({ data: [], error: null }),
         supabase
           .from("loyalty_transactions")
           .select("*, loyalty_members(first_name,last_name,member_number)")
           .order("transaction_date", { ascending: false })
           .limit(TRANSACTION_LIMIT),
-        supabase.from("tier_history").select("*").order("changed_at", { ascending: false }).limit(SUPPORTING_ROW_LIMIT),
-        supabase
-          .from("points_lots")
-          .select("*")
-          .order("expiry_date", { ascending: true })
-          .limit(SUPPORTING_ROW_LIMIT),
-        supabase
-          .from("rewards_catalog")
-          .select("*")
-          .order("points_cost", { ascending: true })
-          .limit(SUPPORTING_ROW_LIMIT),
-        supabase.from("member_login_activity").select("*").order("login_at", { ascending: false }).limit(ACTIVITY_ROW_LIMIT),
-        supabase
-          .from("member_reengagement_actions")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(ACTIVITY_ROW_LIMIT),
+        requirements.tierHistory
+          ? supabase.from("tier_history").select("*").order("changed_at", { ascending: false }).limit(SUPPORTING_ROW_LIMIT)
+          : Promise.resolve({ data: [], error: null }),
+        requirements.pointsLots
+          ? supabase
+              .from("points_lots")
+              .select("*")
+              .order("expiry_date", { ascending: true })
+              .limit(SUPPORTING_ROW_LIMIT)
+          : Promise.resolve({ data: [], error: null }),
+        requirements.rewardsCatalog
+          ? supabase
+              .from("rewards_catalog")
+              .select("*")
+              .order("points_cost", { ascending: true })
+              .limit(SUPPORTING_ROW_LIMIT)
+          : Promise.resolve({ data: [], error: null }),
+        requirements.loginActivity
+          ? supabase.from("member_login_activity").select("*").order("login_at", { ascending: false }).limit(ACTIVITY_ROW_LIMIT)
+          : Promise.resolve({ data: [], error: null }),
+        requirements.reengagementActions
+          ? supabase
+              .from("member_reengagement_actions")
+              .select("*")
+              .order("created_at", { ascending: false })
+              .limit(ACTIVITY_ROW_LIMIT)
+          : Promise.resolve({ data: [], error: null }),
         fetchTierRules(),
-        fetchActiveEarningRules(),
-        supabase
-          .from("redemption_settings")
-          .select("redemption_value_per_point")
-          .eq("is_active", true)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
+        requirements.earningRules ? fetchActiveEarningRules() : Promise.resolve(DEFAULT_EARNING_RULES),
+        requirements.redemptionSettings
+          ? supabase
+              .from("redemption_settings")
+              .select("redemption_value_per_point")
+              .eq("is_active", true)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
         loadLocalRuntimePointMembers(),
       ]);
 
@@ -492,7 +611,7 @@ export function useAdminData(options?: { includeInsights?: boolean }) {
         earningRules: earningRulesRes,
         redemptionValuePerPoint: Number.isFinite(parsedRate) && parsedRate > 0 ? parsedRate : 0.01,
       };
-      adminDataCache = { snapshot, loadedAt: Date.now() };
+      adminDataCache.set(cacheKey, { snapshot, loadedAt: Date.now() });
       applySnapshot(snapshot);
     } catch (e) {
       const message =
@@ -505,7 +624,7 @@ export function useAdminData(options?: { includeInsights?: boolean }) {
     } finally {
       setLoading(false);
     }
-  }, [applySnapshot]);
+  }, [applySnapshot, includeInsights, scope]);
 
   useEffect(() => {
     fetchData();

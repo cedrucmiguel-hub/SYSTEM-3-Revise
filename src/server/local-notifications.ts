@@ -1,4 +1,4 @@
-import { updateApiState, type LocalCommunicationPreferenceRecord } from "./local-store";
+import { updateApiState, withApiState, type LocalCommunicationPreferenceRecord } from "./local-store";
 
 export const defaultLocalCommunicationPreference: LocalCommunicationPreferenceRecord = {
   sms: true,
@@ -28,7 +28,7 @@ function canSend(
 }
 
 export async function loadLocalCommunicationPreference(memberId: string) {
-  return updateApiState((state) => state.communicationPreferences[preferenceKey(memberId)] ?? defaultLocalCommunicationPreference);
+  return withApiState((state) => state.communicationPreferences[preferenceKey(memberId)] ?? defaultLocalCommunicationPreference);
 }
 
 export async function saveLocalCommunicationPreference(
@@ -75,7 +75,7 @@ export async function queueLocalMemberNotification(input: {
 
 export async function listLocalNotifications(input: { memberId?: string; limit?: number } = {}) {
   const limit = Math.min(100, Math.max(1, input.limit ?? 20));
-  return updateApiState((state) =>
+  return withApiState((state) =>
     state.notifications
       .filter((item) => !input.memberId || item.memberId === input.memberId)
       .slice()
@@ -101,7 +101,7 @@ export async function markLocalNotificationRead(id: string) {
 }
 
 export async function localCommunicationAnalytics() {
-  return updateApiState((state) => {
+  return withApiState((state) => {
     const byChannel: Record<string, number> = {};
     const byStatus: Record<string, number> = {};
     for (const item of state.notifications) {

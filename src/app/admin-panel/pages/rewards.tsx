@@ -63,7 +63,7 @@ const rewardsTabs: { value: RewardsTab; label: string; hash: string }[] = [
 ];
 
 export default function AdminRewardsPage() {
-  const { loading, error, metrics, rewardsCatalog, refetch } = useAdminData();
+  const { loading, error, metrics, rewardsCatalog, refetch } = useAdminData({ scope: "rewards" });
   const [activeTab, setActiveTab] = useState<RewardsTab>("overview");
   const [campaigns, setCampaigns] = useState<PromotionCampaign[]>([]);
   const [campaignPerformance, setCampaignPerformance] = useState<CampaignPerformance[]>([]);
@@ -423,8 +423,64 @@ export default function AdminRewardsPage() {
     }
   };
 
-  if (loading) return <p className="text-base text-gray-700">Loading rewards data...</p>;
-  if (error) return <p className="text-red-600">{error}</p>;
+  if (loading) {
+    return (
+      <div className={adminPageShellClass}>
+        <div className={adminPageHeroClass}>
+          <div className={adminPageHeroInnerClass}>
+            <div className={adminEyebrowClass}>Rewards Engine</div>
+            <h1 className={adminPageTitleClass}>Campaigns & Promotions</h1>
+            <p className={adminPageDescriptionClass}>Loading campaigns, flash sales, and partner reward data.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card key={`admin-rewards-skeleton-${index}`} className="border border-[#dce8f5] p-6">
+              <div className="space-y-4">
+                <div className="h-5 w-32 animate-pulse rounded bg-[#e8eef8]" />
+                <div className="h-10 w-20 animate-pulse rounded bg-[#eef3fa]" />
+                <div className="h-4 w-full animate-pulse rounded bg-[#eef3fa]" />
+                <div className="h-4 w-5/6 animate-pulse rounded bg-[#eef3fa]" />
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={adminPageShellClass}>
+        <div className={adminPageHeroClass}>
+          <div className={adminPageHeroInnerClass}>
+            <div className={adminEyebrowClass}>Rewards Engine</div>
+            <h1 className={adminPageTitleClass}>Campaigns & Promotions</h1>
+            <p className={adminPageDescriptionClass}>The rewards workspace could not load its latest data.</p>
+          </div>
+        </div>
+
+        <Card className="border border-[#f3c2c2] bg-[#fff8f8] p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-[#991b1b]">Rewards data failed to load</p>
+              <p className="mt-1 text-sm text-[#7f1d1d]">{error}</p>
+            </div>
+            <Button
+              variant="outline"
+              className="border-[#d7b0b0] text-[#7f1d1d] hover:bg-[#fff1f1]"
+              onClick={() => {
+                void Promise.all([reload(), refetch()]);
+              }}
+            >
+              Retry
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className={adminPageShellClass}>

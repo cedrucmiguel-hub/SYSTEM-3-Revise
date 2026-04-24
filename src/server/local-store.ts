@@ -209,3 +209,8 @@ export async function updateApiState<T>(updater: (state: ApiState) => T | Promis
   await writeApiState(state);
   return result;
 }
+
+export async function withApiState<T>(reader: (state: ApiState) => T | Promise<T>): Promise<T> {
+  const state = await readApiState();
+  return reader(state);
+}

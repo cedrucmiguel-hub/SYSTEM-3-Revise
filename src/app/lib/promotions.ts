@@ -205,70 +205,122 @@ function useLocalPromotionFallback() {
   );
 }
 
+const PROMOTION_READ_CACHE_TTL_MS = 20_000;
+const promotionReadCache = new Map<string, { loadedAt: number; value: unknown }>();
+const promotionReadInFlight = new Map<string, Promise<unknown>>();
+
+async function withPromotionReadCache<T>(key: string, loader: () => Promise<T>): Promise<T> {
+  const cached = promotionReadCache.get(key);
+  if (cached && Date.now() - cached.loadedAt < PROMOTION_READ_CACHE_TTL_MS) {
+    return cached.value as T;
+  }
+
+  const inFlight = promotionReadInFlight.get(key);
+  if (inFlight) return inFlight as Promise<T>;
+
+  const request = loader()
+    .then((value) => {
+      promotionReadCache.set(key, { loadedAt: Date.now(), value });
+      return value;
+    })
+    .finally(() => {
+      promotionReadInFlight.delete(key);
+    });
+
+  promotionReadInFlight.set(key, request);
+  return request;
+}
+
+function clearPromotionReadCache(prefix?: string) {
+  if (!prefix) {
+    promotionReadCache.clear();
+    promotionReadInFlight.clear();
+    return;
+  }
+
+  for (const key of Array.from(promotionReadCache.keys())) {
+    if (key.startsWith(prefix)) promotionReadCache.delete(key);
+  }
+  for (const key of Array.from(promotionReadInFlight.keys())) {
+    if (key.startsWith(prefix)) promotionReadInFlight.delete(key);
+  }
+}
+
 export async function loadPromotionCampaigns(): Promise<PromotionCampaign[]> {
-  const response = await serviceListCampaigns();
-  if (!response.ok) throw new Error("Campaign service list failed");
-  return (response.campaigns || []).map((row) => normalizeCampaign(row as AnyRecord));
+  return withPromotionReadCache("campaigns:all", async () => {
+    const response = await serviceListCampaigns();
+    if (!response.ok) throw new Error("Campaign service list failed");
+    return (response.campaigns || []).map((row) => normalizeCampaign(row as AnyRecord));
+  });
 }
 
 export async function loadActivePromotionCampaigns(memberTier?: string): Promise<PromotionCampaign[]> {
-  const response = await serviceListActiveCampaigns();
-  if (!response.ok) throw new Error("Campaign service active list failed");
-  const campaigns = (response.campaigns || []).map((row) => normalizeCampaign(row as AnyRecord));
-  if (!memberTier) return campaigns;
-  return campaigns.filter(
-    (c) =>
-      c.eligibleTiers.length === 0 ||
-      c.eligibleTiers.some((entry) => entry.toLowerCase() === memberTier.toLowerCase())
-  );
+  const cacheKey = `campaigns:active:${String(memberTier || "").toLowerCase()}`;
+  return withPromotionReadCache(cacheKey, async () => {
+    const response = await serviceListActiveCampaigns();
+    if (!response.ok) throw new Error("Campaign service active list failed");
+    const campaigns = (response.campaigns || []).map((row) => normalizeCampaign(row as AnyRecord));
+    if (!memberTier) return campaigns;
+    return campaigns.filter(
+      (c) =>
+        c.eligibleTiers.length === 0 ||
+        c.eligibleTiers.some((entry) => entry.toLowerCase() === memberTier.toLowerCase())
+    );
+  });
 }
 
 export async function savePromotionCampaign(input: PromotionCampaignInput) {
   const response = await serviceSaveCampaign(input);
   if (!response.ok) throw new Error("Campaign service save failed");
+  clearPromotionReadCache("campaigns:");
+  clearPromotionReadCache("campaign-performance");
   return normalizeCampaign(response.campaign as AnyRecord);
 }
 
 export async function queueCampaignNotifications(campaignId: string) {
   const response = await serviceQueueNotifications(campaignId);
   if (!response.ok) throw new Error("Campaign service notify failed");
+  clearPromotionReadCache("campaign-performance");
   return response.notificationsQueued;
 }
 
 export async function loadCampaignPerformance(): Promise<CampaignPerformance[]> {
-  const response = await serviceLoadPerformance();
-  if (!response.ok) throw new Error("Campaign service performance failed");
+  return withPromotionReadCache("campaign-performance", async () => {
+    const response = await serviceLoadPerformance();
+    if (!response.ok) throw new Error("Campaign service performance failed");
 
-  return ((response.performance || []) as AnyRecord[]).map((row) => ({
-    campaignId: String(row.campaign_id ?? ""),
-    campaignCode: String(row.campaign_code ?? ""),
-    campaignName: String(row.campaign_name ?? ""),
-    campaignType: String(row.campaign_type ?? "bonus_points") as PromotionCampaignType,
-    status: String(row.status ?? "scheduled") as PromotionCampaignStatus,
-    startsAt: String(row.starts_at ?? new Date().toISOString()),
-    endsAt: String(row.ends_at ?? new Date().toISOString()),
-    notificationsSent: Number(row.notifications_sent ?? 0),
-    trackedTransactions: Number(row.tracked_transactions ?? 0),
-    pointsAwarded: Number(row.points_awarded ?? 0),
-    redemptionCount: Number(row.redemption_count ?? 0),
-    quantityLimit:
-      row.quantity_limit === null || row.quantity_limit === undefined ? null : Number(row.quantity_limit),
-    quantityClaimed: Number(row.quantity_claimed ?? 0),
-    sellThrough: row.sell_through === null || row.sell_through === undefined ? null : Number(row.sell_through),
-    redemptionSpeedPerHour: Number(row.redemption_speed_per_hour ?? 0),
-  }));
+    return ((response.performance || []) as AnyRecord[]).map((row) => ({
+      campaignId: String(row.campaign_id ?? ""),
+      campaignCode: String(row.campaign_code ?? ""),
+      campaignName: String(row.campaign_name ?? ""),
+      campaignType: String(row.campaign_type ?? "bonus_points") as PromotionCampaignType,
+      status: String(row.status ?? "scheduled") as PromotionCampaignStatus,
+      startsAt: String(row.starts_at ?? new Date().toISOString()),
+      endsAt: String(row.ends_at ?? new Date().toISOString()),
+      notificationsSent: Number(row.notifications_sent ?? 0),
+      trackedTransactions: Number(row.tracked_transactions ?? 0),
+      pointsAwarded: Number(row.points_awarded ?? 0),
+      redemptionCount: Number(row.redemption_count ?? 0),
+      quantityLimit:
+        row.quantity_limit === null || row.quantity_limit === undefined ? null : Number(row.quantity_limit),
+      quantityClaimed: Number(row.quantity_claimed ?? 0),
+      sellThrough: row.sell_through === null || row.sell_through === undefined ? null : Number(row.sell_through),
+      redemptionSpeedPerHour: Number(row.redemption_speed_per_hour ?? 0),
+    }));
+  });
 }
 
 export async function loadRewardPartners(): Promise<RewardPartner[]> {
   if (useLocalPromotionFallback()) return [];
+  return withPromotionReadCache("partners:list", async () => {
+    const { data, error } = await supabase
+      .from("reward_partners")
+      .select("*")
+      .order("partner_name", { ascending: true });
 
-  const { data, error } = await supabase
-    .from("reward_partners")
-    .select("*")
-    .order("partner_name", { ascending: true });
-
-  if (error) throw error;
-  return (data || []).map((row) => normalizePartner(row as AnyRecord));
+    if (error) throw error;
+    return (data || []).map((row) => normalizePartner(row as AnyRecord));
+  });
 }
 
 export async function saveRewardPartner(input: RewardPartnerInput) {
@@ -287,6 +339,7 @@ export async function saveRewardPartner(input: RewardPartnerInput) {
 
   const { data, error } = await query;
   if (error) throw error;
+  clearPromotionReadCache("partners:");
   return normalizePartner(data as AnyRecord);
 }
 
@@ -299,28 +352,30 @@ export async function toggleRewardPartner(partnerId: string, isActive: boolean) 
     .single();
 
   if (error) throw error;
+  clearPromotionReadCache("partners:");
   return normalizePartner(data as AnyRecord);
 }
 
 export async function loadPartnerPerformance(): Promise<RewardPartnerPerformance[]> {
   if (useLocalPromotionFallback()) return [];
+  return withPromotionReadCache("partners:performance", async () => {
+    const { data, error } = await supabase.rpc("loyalty_partner_reward_performance");
+    if (error) throw error;
 
-  const { data, error } = await supabase.rpc("loyalty_partner_reward_performance");
-  if (error) throw error;
-
-  return ((data || []) as AnyRecord[]).map((row) => ({
-    id: String(row.partner_id ?? ""),
-    partnerCode: String(row.partner_code ?? ""),
-    partnerName: String(row.partner_name ?? ""),
-    description: null,
-    logoUrl: null,
-    conversionRate: 1,
-    isActive: true,
-    rewardsCount: Number(row.rewards_count ?? 0),
-    redemptionCount: Number(row.redemption_count ?? 0),
-    uniqueRedeemers: Number(row.unique_redeemers ?? 0),
-    pointsRedeemed: Number(row.points_redeemed ?? 0),
-  }));
+    return ((data || []) as AnyRecord[]).map((row) => ({
+      id: String(row.partner_id ?? ""),
+      partnerCode: String(row.partner_code ?? ""),
+      partnerName: String(row.partner_name ?? ""),
+      description: null,
+      logoUrl: null,
+      conversionRate: 1,
+      isActive: true,
+      rewardsCount: Number(row.rewards_count ?? 0),
+      redemptionCount: Number(row.redemption_count ?? 0),
+      uniqueRedeemers: Number(row.unique_redeemers ?? 0),
+      pointsRedeemed: Number(row.points_redeemed ?? 0),
+    }));
+  });
 }
 
 export async function loadMemberBadgeProgress(memberIdentifier?: string, fallbackEmail?: string) {

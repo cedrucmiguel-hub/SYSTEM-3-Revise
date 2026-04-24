@@ -129,6 +129,8 @@ export default function Rewards() {
   const [activeTab, setActiveTab] = useState<RewardCategoryTab>("all");
   const [catalog, setCatalog] = useState<Reward[]>([]);
   const [activeCampaigns, setActiveCampaigns] = useState<PromotionCampaign[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
   const [giftDialogOpen, setGiftDialogOpen] = useState(false);
@@ -144,6 +146,30 @@ export default function Rewards() {
   const [reservedRewards, setReservedRewards] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
+
+  const loadRewardsData = async (memberTier: string) => {
+    setLoadingData(true);
+    setLoadError(null);
+
+    try {
+      const [rewards, campaignsResponse] = await Promise.all([
+        loadRewardsCatalog(),
+        loadActiveCampaignsViaApi(memberTier).catch(async () => ({
+          ok: true as const,
+          campaigns: await loadActivePromotionCampaigns(memberTier),
+        })),
+      ]);
+
+      setCatalog(rewards.map(normalizeReward));
+      setActiveCampaigns(campaignsResponse.campaigns.map(normalizeCampaign));
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Unable to load rewards right now.");
+      setCatalog([]);
+      setActiveCampaigns([]);
+    } finally {
+      setLoadingData(false);
+    }
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -166,17 +192,31 @@ export default function Rewards() {
     let active = true;
 
     const loadData = async () => {
-      const [rewards, campaignsResponse] = await Promise.all([
-        loadRewardsCatalog().catch(() => []),
-        loadActiveCampaignsViaApi(user.tier).catch(async () => ({
-          ok: true as const,
-          campaigns: await loadActivePromotionCampaigns(user.tier).catch(() => []),
-        })),
-      ]);
+      setLoadingData(true);
+      setLoadError(null);
 
-      if (!active) return;
-      setCatalog(rewards.map(normalizeReward));
-      setActiveCampaigns(campaignsResponse.campaigns.map(normalizeCampaign));
+      try {
+        const [rewards, campaignsResponse] = await Promise.all([
+          loadRewardsCatalog(),
+          loadActiveCampaignsViaApi(user.tier).catch(async () => ({
+            ok: true as const,
+            campaigns: await loadActivePromotionCampaigns(user.tier),
+          })),
+        ]);
+
+        if (!active) return;
+        setCatalog(rewards.map(normalizeReward));
+        setActiveCampaigns(campaignsResponse.campaigns.map(normalizeCampaign));
+      } catch (error) {
+        if (!active) return;
+        setLoadError(error instanceof Error ? error.message : "Unable to load rewards right now.");
+        setCatalog([]);
+        setActiveCampaigns([]);
+      } finally {
+        if (active) {
+          setLoadingData(false);
+        }
+      }
     };
 
     void loadData();
@@ -558,6 +598,42 @@ export default function Rewards() {
           <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center"><Award className="w-8 h-8" /></div>
         </div>
       </Card>
+
+      {loadError ? (
+        <Card className="border border-[#f3c2c2] bg-[#fff8f8] p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-[#991b1b]">Rewards data failed to load</p>
+              <p className="mt-1 text-sm text-[#7f1d1d]">{loadError}</p>
+            </div>
+            <Button
+              variant="outline"
+              className="border-[#d7b0b0] text-[#7f1d1d] hover:bg-[#fff1f1]"
+              onClick={() => {
+                void loadRewardsData(user.tier);
+              }}
+            >
+              Retry
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
+      {loadingData && catalog.length === 0 ? (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card key={`reward-skeleton-${index}`} className="overflow-hidden border border-[#dce8f5]">
+              <div className="h-48 animate-pulse bg-[#e9eff7]" />
+              <div className="space-y-3 p-6">
+                <div className="h-5 w-2/3 animate-pulse rounded bg-[#e9eff7]" />
+                <div className="h-4 w-full animate-pulse rounded bg-[#eef3f9]" />
+                <div className="h-4 w-5/6 animate-pulse rounded bg-[#eef3f9]" />
+                <div className="h-10 w-full animate-pulse rounded-xl bg-[#e1e8f2]" />
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : null}
 
       {bonusCampaigns.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

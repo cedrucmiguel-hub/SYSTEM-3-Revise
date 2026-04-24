@@ -71,7 +71,7 @@ const triggers: NotificationTrigger[] = ["Points Earned", "Tier Upgrade", "Rewar
 const offerTypes: WinBackOfferType[] = ["2x Points", "Special Discount", "Bonus Reward"];
 
 export default function AdminEngagementPage() {
-  const { members, transactions, loginActivity, loading, error } = useAdminData();
+  const { members, transactions, loginActivity, loading, error } = useAdminData({ scope: "engagement" });
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("notifications");
   const [state, setState] = useState<EngagementState>(() => loadEngagementState());
   const [campaignName, setCampaignName] = useState("Birthday Loyalty Push");

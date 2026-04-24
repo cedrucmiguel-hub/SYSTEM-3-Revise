@@ -1,4 +1,4 @@
-import { updateApiState } from "./local-store";
+import { updateApiState, withApiState } from "./local-store";
 
 type AwardInput = {
   memberIdentifier: string;
@@ -31,6 +31,48 @@ function awardPoints(input: AwardInput) {
   if (input.points > 0) return input.points;
   if (input.amountSpent && input.amountSpent > 0) return Math.floor(input.amountSpent / 10);
   return 0;
+}
+
+function buildLocalMemberActivityResponse(
+  memberId: string,
+  existing: {
+    memberId: string;
+    email: string | null;
+    pointsBalance: number;
+    tier: string;
+    history: Array<{
+      id: string;
+      type: string;
+      points: number;
+      reason: string;
+      date: string;
+      expiry_date: string | null;
+      reference: string | null;
+    }>;
+  },
+  fallbackEmail?: string,
+) {
+  return {
+    balance: {
+      member_id: memberId,
+      points_balance: existing.pointsBalance,
+      tier: existing.tier,
+    },
+    history: existing.history,
+    profile: {
+      id: memberId,
+      member_id: memberId,
+      member_number: memberId,
+      first_name: "Demo",
+      last_name: "Member",
+      email: fallbackEmail ?? existing.email ?? "demo@example.com",
+      phone: null,
+      birthdate: null,
+      points_balance: existing.pointsBalance,
+      tier: existing.tier,
+      enrollment_date: new Date().toISOString(),
+    },
+  };
 }
 
 export async function awardLocalPoints(input: AwardInput, reference?: string) {
@@ -120,6 +162,11 @@ export async function redeemLocalPoints(input: RedeemInput) {
 }
 
 export async function loadLocalMemberActivity(memberId: string, fallbackEmail?: string) {
+  const existingMember = await withApiState((state) => state.pointMembers[memberId] ?? null);
+  if (existingMember && (!fallbackEmail || existingMember.email === fallbackEmail)) {
+    return buildLocalMemberActivityResponse(memberId, existingMember, fallbackEmail);
+  }
+
   return updateApiState((state) => {
     const existing = state.pointMembers[memberId] ?? {
       memberId,
@@ -134,32 +181,12 @@ export async function loadLocalMemberActivity(memberId: string, fallbackEmail?: 
       email: fallbackEmail ?? existing.email,
     };
 
-    return {
-      balance: {
-        member_id: memberId,
-        points_balance: existing.pointsBalance,
-        tier: existing.tier,
-      },
-      history: existing.history,
-      profile: {
-        id: memberId,
-        member_id: memberId,
-        member_number: memberId,
-        first_name: "Demo",
-        last_name: "Member",
-        email: fallbackEmail ?? existing.email ?? "demo@example.com",
-        phone: null,
-        birthdate: null,
-        points_balance: existing.pointsBalance,
-        tier: existing.tier,
-        enrollment_date: new Date().toISOString(),
-      },
-    };
+    return buildLocalMemberActivityResponse(memberId, existing, fallbackEmail);
   });
 }
 
 export async function loadLocalPointsSnapshot() {
-  return updateApiState((state) => ({
+  return withApiState((state) => ({
     members: Object.values(state.pointMembers)
       .filter((member) => !member.memberId.includes("{{") && !member.memberId.includes("}}"))
       .map((member) => ({
