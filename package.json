@@ -6,6 +6,13 @@
     "scripts": {
         "build": "next build",
         "dev": "node scripts/next-dev-inproc.cjs",
+        "dev:frontend": "node scripts/next-dev-inproc.cjs",
+        "setup:backend": "npm --prefix backend install",
+        "dev:backend": "npm --prefix backend run start:dev",
+        "build:backend": "npm --prefix backend run build",
+        "start:backend": "npm --prefix backend run start",
+        "build:all": "npm run build && npm run build:backend",
+        "health": "powershell -NoProfile -Command \"Invoke-RestMethod http://localhost:4000/health | ConvertTo-Json -Depth 6\"",
         "setup:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/setup-local-stack.ps1",
         "local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/start-local-stack.ps1 -StopExisting",
         "qa": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/test-local-stack.ps1",
