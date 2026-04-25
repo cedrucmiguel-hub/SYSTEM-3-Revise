@@ -1,5 +1,3 @@
-const useEmbedded = process.env.USE_EMBEDDED_BACKEND !== "false";
-
 async function check(url) {
   const startedAt = Date.now();
   const response = await fetch(url);
@@ -19,8 +17,7 @@ async function check(url) {
   };
 }
 
-const targets = ["http://localhost:3000/api/health"];
-if (!useEmbedded) targets.push("http://localhost:4000/health");
+const targets = ["http://localhost:4000/health"];
 
 const results = [];
 for (const target of targets) {

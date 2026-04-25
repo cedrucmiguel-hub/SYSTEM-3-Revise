@@ -1,10 +1,11 @@
 $ErrorActionPreference = "Continue"
 
 $Urls = @(
-  "http://127.0.0.1:3000/api/health",
   "http://127.0.0.1:4000/health",
-  "http://127.0.0.1:4001/health",
-  "http://127.0.0.1:4002/health"
+  "http://127.0.0.1:4000/members",
+  "http://127.0.0.1:4000/segments",
+  "http://127.0.0.1:4000/campaigns",
+  "http://127.0.0.1:4000/rewards"
 )
 
 foreach ($Url in $Urls) {

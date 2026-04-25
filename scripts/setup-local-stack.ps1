@@ -1,11 +1,6 @@
 $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$Services = @(
-  "services\points-engine",
-  "services\campaign-service",
-  "services\gateway"
-)
 
 function Invoke-Npm {
   param(
@@ -25,12 +20,8 @@ function Invoke-Npm {
   }
 }
 
-Invoke-Npm -WorkingDirectory $Root -Arguments @("install")
-
-foreach ($Service in $Services) {
-  $ServicePath = Join-Path $Root $Service
-  Invoke-Npm -WorkingDirectory $ServicePath -Arguments @("install")
-  Invoke-Npm -WorkingDirectory $ServicePath -Arguments @("run", "build")
-}
+Invoke-Npm -WorkingDirectory (Join-Path $Root "apps\frontend") -Arguments @("install")
+Invoke-Npm -WorkingDirectory (Join-Path $Root "services\backend-nest") -Arguments @("install")
+Invoke-Npm -WorkingDirectory (Join-Path $Root "services\backend-nest") -Arguments @("run", "build")
 
 Write-Output "Local stack setup complete. Run: npm run local"

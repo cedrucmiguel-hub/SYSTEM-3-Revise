@@ -8,10 +8,8 @@ $Runtime = Join-Path $Root ".runtime"
 New-Item -ItemType Directory -Force -Path $Runtime | Out-Null
 
 $RequiredPaths = @(
-  (Join-Path $Root "node_modules\next"),
-  (Join-Path $Root "services\points-engine\dist\server.js"),
-  (Join-Path $Root "services\campaign-service\dist\server.js"),
-  (Join-Path $Root "services\gateway\dist\server.js")
+  (Join-Path $Root "apps\frontend\node_modules\next"),
+  (Join-Path $Root "services\backend-nest\dist\main.js")
 )
 
 $Missing = $RequiredPaths | Where-Object { -not (Test-Path $_) }
@@ -24,7 +22,7 @@ if ($Missing.Count -gt 0) {
   exit 1
 }
 
-$Ports = @(3000, 4000, 4001, 4002)
+$Ports = @(3000, 4000)
 
 if ($StopExisting) {
   foreach ($Port in $Ports) {
@@ -41,23 +39,13 @@ if ($StopExisting) {
 $Services = @(
   @{
     Name = "next"
-    WorkingDirectory = $Root
-    Arguments = @("scripts/next-dev-inproc.cjs")
+    WorkingDirectory = Join-Path $Root "apps\frontend"
+    Arguments = @("..\..\scripts\next-dev-inproc.cjs")
   },
   @{
-    Name = "points-engine"
-    WorkingDirectory = Join-Path $Root "services\points-engine"
-    Arguments = @("dist/server.js")
-  },
-  @{
-    Name = "campaign-service"
-    WorkingDirectory = Join-Path $Root "services\campaign-service"
-    Arguments = @("dist/server.js")
-  },
-  @{
-    Name = "gateway"
-    WorkingDirectory = Join-Path $Root "services\gateway"
-    Arguments = @("dist/server.js")
+    Name = "backend-nest"
+    WorkingDirectory = Join-Path $Root "services\backend-nest"
+    Arguments = @("dist/main.js")
   }
 )
 

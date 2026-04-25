@@ -1,33 +1,95 @@
-# SYSTEM-3-Revise
+# System 3 Loyalty Platform
 
-Local loyalty platform for System 3.
+System 3 is organized as a separated monorepo. The frontend is UI-only. All API and backend behavior lives in the NestJS backend.
 
-## Windows QA Setup From ZIP
+## Repository Layout
 
-This project can run locally without Supabase keys. When keys are missing, the app and services use the local/demo runtime store in `.runtime/api-store.json`.
+```text
+/
+  apps/
+    frontend/                 Next.js UI only
+  services/
+    backend-nest/             NestJS API backend
+    gateway/                  Legacy Fastify gateway
+    campaign-service/         Legacy campaign service
+    points-engine/            Legacy points engine
+  packages/
+    shared/                   Shared types/utilities placeholder
+  supabase/
+    migrations/               Idempotent SQL migrations
+    seeds/                    Seed SQL files
+  scripts/                    Root QA and smoke-test scripts
+  docs/                       Architecture and CI/CD docs
+  docker/                     Optional production Docker files
+  postman/                    Postman collection and environment
+```
 
-Use PowerShell from the project root:
+## Frontend
+
+The frontend lives in `apps/frontend`. It does not contain Next.js API routes.
 
 ```powershell
-npm run setup:local
-npm run local
-npm run qa
+cd apps/frontend
+npm install
+npm run dev
 ```
 
-Open the app with:
+Set the backend URL:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
+```
+
+Open:
 
 ```text
-http://127.0.0.1:3000/admin/settings
+http://localhost:3000
 ```
 
-Use `127.0.0.1`, not `localhost`, for local QA and Postman. If Chrome shows `chrome-error://chromewebdata`, the local server is not running yet. Run `npm run local` again and verify ports `3000`, `4000`, `4001`, and `4002` are listening.
+## Backend
 
-If you run `npm run build` while the local stack is already open, run `npm run local` again before testing. Next.js rewrites `.next` during production builds, so restarting avoids mixed dev/build artifacts.
+The NestJS backend lives in `services/backend-nest` and owns all APIs.
 
-Postman local gateway base URL:
+```powershell
+npm run setup:backend
+npm run build:backend
+npm run dev:backend
+```
+
+Backend base URL:
 
 ```text
-http://127.0.0.1:4000
+http://localhost:4000
 ```
 
-Real Supabase persistence is optional for QA. To test against Supabase, copy `.env.example` to `.env.local` and fill in the real project values.
+## Root Commands
+
+```powershell
+npm run dev:frontend
+npm run dev:backend
+npm run build:frontend
+npm run build:backend
+npm run build:all
+npm run health
+npm run test:api
+```
+
+## Supabase
+
+SQL migrations are in `supabase/migrations`. They are idempotent and safe to run manually in Supabase SQL Editor.
+
+## Postman
+
+Postman validates the backend directly:
+
+```text
+baseUrl = http://127.0.0.1:4000
+```
+
+## CI/CD
+
+Frontend CI/CD should use `apps/frontend` as the working directory.
+
+Backend CI/CD should use `services/backend-nest` as the working directory.
+
+See `docs/frontend-cicd.md` for the frontend deployment contract.

@@ -18,7 +18,7 @@ async function requestJson(url, init) {
   };
 }
 
-const baseUrl = process.env.BASE_URL || "http://localhost:3000/api";
+const baseUrl = process.env.BASE_URL || "http://localhost:4000";
 const memberId = process.env.MEMBER_ID || "MEM-000011";
 const referralEmail = process.env.REFERRAL_EMAIL || "qa-referral@example.com";
 

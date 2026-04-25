@@ -7,33 +7,21 @@ Import these two files into Postman:
 
 Select the `System 3 Loyalty Local` environment in the top-right environment dropdown.
 
-For local testing, keep:
+Use the NestJS backend as the API base:
 
 ```text
 baseUrl = http://127.0.0.1:4000
 ```
 
-For direct Next API debugging, use this only when the Next app is running:
+Do not use the frontend URL or Supabase project URL as `baseUrl`. The frontend is UI-only, and Supabase is only the database/auth platform.
 
-```text
-baseUrl = http://127.0.0.1:3000/api
-```
-
-For deployed testing, replace `baseUrl` with the deployed gateway or Next API domain, for example:
-
-```text
-baseUrl = https://your-loyalty-app.vercel.app
-```
-
-Do not use the Supabase project URL as `baseUrl`. Supabase is only the database/auth backend; these API routes live in the Next app.
-
-Start the full local stack before testing:
+Start the backend before testing:
 
 ```powershell
-npm run setup:local
-npm run local
+npm run build:backend
+npm run dev:backend
 ```
 
-Then run `00 Health / Health Check` first. If it returns `ok: true`, continue with `01 Points Service / Award Points - No Body Params`.
+Then run `00 Health / Health Check` first. If it returns `ok: true`, continue with the rest of the collection.
 
 `Award Points - No Body Params` and `Transaction Completed Event` generate a fresh `transactionRef` before every send. This is required because duplicate POS references are intentionally ignored by the API.
