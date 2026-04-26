@@ -4,29 +4,16 @@
   "version": "0.1.0",
   "type": "module",
   "workspaces": [
-    "apps/frontend",
-    "services/backend-nest",
-    "services/gateway",
-    "services/campaign-service",
-    "services/points-engine",
-    "packages/shared"
+    "src/frontend",
+    "src/backend"
   ],
   "scripts": {
-    "dev": "npm run dev:frontend",
-    "build": "npm run build:frontend",
-    "dev:frontend": "npm --prefix apps/frontend run dev",
-    "build:frontend": "npm --prefix apps/frontend run build",
-    "start:frontend": "npm --prefix apps/frontend run start",
-    "setup:frontend": "npm --prefix apps/frontend install",
-    "setup:backend": "npm --prefix services/backend-nest install",
-    "dev:backend": "npm --prefix services/backend-nest run start",
-    "build:backend": "npm --prefix services/backend-nest run build",
-    "start:backend": "npm --prefix services/backend-nest run start",
+    "dev:frontend": "npm --prefix src/frontend run dev",
+    "dev:backend": "npm --prefix src/backend run start",
+    "build:frontend": "npm --prefix src/frontend run build",
+    "build:backend": "npm --prefix src/backend run build",
     "build:all": "npm run build:backend && npm run build:frontend",
-    "health": "node scripts/health-check.mjs",
-    "test:api": "node scripts/api-smoke-test.mjs",
-    "setup:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/setup-local-stack.ps1",
-    "local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/start-local-stack.ps1 -StopExisting",
-    "qa": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/test-local-stack.ps1"
+    "start:frontend": "npm --prefix src/frontend run start",
+    "start:backend": "npm --prefix src/backend run start"
   }
 }

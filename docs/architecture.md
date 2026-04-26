@@ -1,22 +1,28 @@
 # System 3 Architecture
 
-## Development
-
-The frontend and backend are separated.
+## Required Structure
 
 ```text
-apps/frontend (:3000)
-  -> HTTP via NEXT_PUBLIC_API_BASE_URL
-services/backend-nest (:4000)
-  -> domain modules
-  -> Supabase or local_runtime fallback
+src/frontend -> Next.js React TypeScript UI
+src/backend  -> NestJS TypeScript API
+supabase     -> migrations and seeds
+postman      -> backend API validation
 ```
 
-The frontend is UI-only. It must not contain a Next API route folder or backend handler modules.
+## Runtime
+
+```text
+Browser
+  -> Next.js frontend on port 3000
+  -> NestJS backend on port 4000
+  -> Supabase or backend local-runtime fallback
+```
+
+The frontend is UI-only. It does not own backend handlers, API route folders, server modules, or service-role database access.
+
+The backend owns all API behavior through NestJS controllers, services, and modules.
 
 ## Backend Modules
-
-The NestJS backend owns these domains:
 
 - health
 - points
@@ -26,26 +32,15 @@ The NestJS backend owns these domains:
 - segments
 - purchases
 - tasks
-- communications
 - referrals
+- communications
 - partners
 - rewards
-
-## Legacy Services
-
-These remain for compatibility while NestJS is the primary backend:
-
-- `services/gateway`
-- `services/campaign-service`
-- `services/points-engine`
+- supabase
+- local-runtime
 
 ## Data Modes
 
-- `local_runtime`: deterministic file-backed data for local/demo use
-- `demo`: fake email/SMS delivery logged to outbox
-- `supabase`: real persistence when configured
-
-## API Bases
-
-- Frontend: `http://localhost:3000`
-- Backend/Postman: `http://localhost:4000`
+- Supabase mode uses service-role credentials on the backend only.
+- Local demo mode uses backend local-runtime fallback data.
+- Email and SMS default to demo providers unless real provider credentials are configured.
